@@ -1,144 +1,130 @@
 <!doctype html>
-<html lang="en">
-
+<html lang="de">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <title>Deine Registrierung zum Cyber-Vorabcheck</title>
-    <style media="all" type="text/css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: "Helvetica Neue", Helvetica, sans-serif;
-            font-size: 14px;
-            background-color: #fff;
-            font-weight: 400;
+            background-color: #f4f6f9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #1a1a2e;
         }
-
-        .main {
-            background-color: #f7f7f7;
-            padding: 0;
-            max-width: 700px;
+        .wrapper {
+            max-width: 600px;
+            margin: 40px auto;
+            background: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.06);
         }
-
-        p {
-            margin: 0 0 16px 0;
-        }
-
         .header {
-            background-color: #083739;
-            color: #fff;
-            padding: 24px;
-            font-weight: normal;
-            word-break: break-word;
-            line-break: auto;
-            height: 200px;
+            background: linear-gradient(135deg, #083739 0%, #0a4a4d 100%);
+            padding: 40px 48px;
+            text-align: center;
         }
-
-
-        td.image {
-            background-color: #1ab3b9;
-        }
-
         .header h1 {
-            font-weight: normal;
+            color: #ffffff;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
         }
-
-        h2 {
-            margin: 16px 0 16px 0;
-        }
-
-        .btn {
-            box-sizing: border-box;
-            min-width: 100% !important;
-            width: 100%;
-        }
-
-        table.table-button {
+        .header .brand {
+            display: inline-block;
+            background: rgba(255,255,255,0.12);
+            padding: 8px 20px;
+            border-radius: 20px;
+            color: #7edde2;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
             margin-bottom: 16px;
         }
-
-        .btn a {
-
-            box-sizing: border-box;
-            cursor: pointer;
+        .body-content {
+            padding: 40px 48px 32px;
+        }
+        .body-content h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #083739;
+            margin-bottom: 16px;
+        }
+        .body-content p {
+            color: #4a4a6a;
+            margin-bottom: 20px;
+        }
+        .btn-wrapper {
+            text-align: center;
+            margin: 32px 0;
+        }
+        .btn {
             display: inline-block;
-            font-size: 14px;
-            font-weight: bold;
-
-            padding: 12px 36px;
+            background: linear-gradient(135deg, #1ab3b9 0%, #0a4a4d 100%);
+            color: #ffffff !important;
             text-decoration: none;
-            text-transform: capitalize;
+            font-size: 16px;
+            font-weight: 600;
+            padding: 14px 48px;
+            border-radius: 8px;
+            letter-spacing: 0.3px;
+            transition: transform 0.2s ease;
         }
-
-        .btn-primary a {
-            background-color: #1ab3b9;
-            border-color: #1ab3b9;
-            color: #ffffff;
+        .btn:hover {
+            transform: translateY(-1px);
         }
-
-        .wrapper {
-            padding-left: 16px;
+        .divider {
+            height: 1px;
+            background: #e8ecf2;
+            margin: 32px 0 24px;
         }
-
-        @media all {
-            .btn-primary table td:hover {
-                background-color: #083739 !important;
-            }
-
-            .btn-primary a:hover {
-                background-color: #083739 !important;
-                border-color: #083739 !important;
-            }
+        .footer {
+            padding: 0 48px 32px;
+            text-align: center;
+        }
+        .footer p {
+            color: #8e8ea0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .footer .team {
+            color: #1ab3b9;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        @media only screen and (max-width: 480px) {
+            .wrapper { margin: 16px; border-radius: 12px; }
+            .header { padding: 28px 24px; }
+            .header h1 { font-size: 20px; }
+            .body-content { padding: 28px 24px 20px; }
+            .footer { padding: 0 24px 24px; }
+            .btn { display: block; padding: 14px 24px; }
         }
     </style>
 </head>
-
 <body>
-    <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="body">
-        <tr>
-            <td class="container">
-                <div class="content">
-
-                    <!-- START CENTERED WHITE CONTAINER -->
-                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="main">
-                        <tr>
-                            <td class="header">
-                                <h1>Deine Registrierung zum Cyber-Vorabcheck</h1>
-                            </td>
-                            <td class="image">
-                                <img width="200" height="200"
-                                    src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAa8AAAGvCAYAAADsa1oBAAAACXBIWXMAAAsSAAALEgHS3X78AAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAIABJREFUeJzs3Xd8W9XdP/DPuVfLS7Id7yHJI8tJSEIWgRA2lAJhFCilgw7ah7YPP9o+nU/XQ+dDd58O6KBASwshUCCEvSmUTLKdOPGQ5L0t2Zatce/5/eERD0mWbF1dXfv7fr3yekW+4xwntr6653zP9zDOOQghhBAtEdTuACGEEBIrCl6EEEI0h4IXIYQQzaHgRQghRHMoeBFCCNEcCl6EEEI0h4IXIYQQzaHgRQghRHMoeBFCCNEcCl6EEEI0h4IXIYQQzaHgRQghRHMoeBFCCNEcCl6EEEI0h4IXIYQQzaHgRQghRHMoeBFCCNEcCl6EEEI0h4IXIYQQzaHgRQghRHMoeBFCCNEcCl6EEEI0h4IXIYQQzaHgRQghRHMoeBFCCNEcCl6EEEI0h4IXIYQQzaHgRQghRHN0aneALCxdXV0ZXq/3m6IoruKcM7X7owWc817O+e+tVus7aveFkGTBOOdq94EsEA6H4wpBEJ7mnBvV7ovWcM4hCMLjVqv1JrX7QkgyoGFDkhBdXV0ZjDEKXLPEGAPn/EaXy/VVtftCSDKg4EUSwuv1fhsABa45Yox9We0+EJIMaM6LJARjbM1CGqJmjEGnG/n1CgaDmPi9z/bYqCxFO06IRlDwIgkhy7JB7T4kCmMMqampEISRgQ1ZluH1esE5j+kY5xyDg4OTAhgluRAygoYNCYkznU43HoAAQBAEiKIY9tjYk5YoipOOMcag1+sT1GtCtIWCFyGEEM2h4EVInAWDQciyPP5almVIkhT2WDAYBABIkjTpGOccgUAgQb0mRFtozouQOOOcw+v1hky8mO0xQshkFLwIUUCkp6bZHiOEnEHBiySEKIpDE4fEyKxJaneAkGRAwYskhCAIe0RRfJ/a/ZgHOtTuACHJgBI2CCGEaA4FL0IIIZpDwYsQQojmUPAihBCiORS8CCGEaA4FL0IIIZpDwYsQQojmUPAihBCiObRImahOEIQZt/4IBALjRWsNBsN4/T8tCAQCk0o+6XS68S1SQgkGg+OFfAkhoWnnHYDMW4yxiG/mwOSK66Ioamqfq6mBaOL+XtGcTwiZjoIXUR3nfHxbkEjnjJEkSVPFa6fWdJy4DUooVEmekJlR8CKqk2UZfr8/6vP9fn9M5yebmQI1IWRmlLBBCCFEc+jJi2iSmk8vgiBAEM587tPr9WCMxbWNQCBAw4eEREDBi2gS51zVN/eJwUun08U9eGl5WJSQRKDgRTSJMRb3gBFL2xNJkhT3vjDG6MmLkAgoeBFNSqZ1XvSUREjiUcIGIYQQzUmej69kQZtp2G3iEJpaw4WzNXX4b6YhT7Xn8wjRAgpeRHWiKMJoNEY8x+/3j2cY6vX6pBo2nMnU8lAmkwkGgyHs+cPDw/D5fInoGiGaRcOGhBBCNEc7H1+nqK6uNqSnp6ep3Q8SHZ1OZwp3TJIkDA8PR7x+4jBaIBDQVJWKqUOAPp8vZJLH2HmRhgw554LL5cqKbw/JQmS1Wj0ANFtIU3PBy+FwrBEEIS0tLc0LwK12f0jUUiK9KcdSjDYZ5oPmMu82sdbh2N+jvR9jTABAwYvMWWNjYwXn3BgMBjvLy8tPqd2fWGkqeLlcri06na66pKSkR+2+kNi0tLT0ai3RIhJZlictVJ4Nzvls7hG0Wq31c2qYkBH1AFBfX291OBxr7Hb7IbU7FAvNBC+Hw7EMQK3VaqXANc9wzmd88hJFcfzpRBTFOQeOeJAkacatXICRQDfx+xt7HS6YTy0/RYiSysvLXS6XK6O2tja3srKyU+3+REszwYsxlmWz2U6q3Q8Sf5zzaduGT... (line truncated to 2000 chars)
-                            </td>
-                        </tr>
-                        <!-- START MAIN CONTENT AREA -->
-                        <tr>
-                            <td class="wrapper">
-                                <h2>Hallo {{username}},</h2>
-                                <p>Vielen Dank f&uuml;r deine Registrierung zum Cyber-Vorabcheck!</p>
-                                <p>Du bist nur noch einen Schritt von der Aktivierung deines Benutzerkontos entfernt.
-                                    Bitte best&auml;tige die Registrierung, indem auf folgenden Link klickst:
-                                </p>
-                                <table class="table-button" role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
-                                    <tr>
-                                        <td class="btn btn-primary"> <a href="{{confirmationLink}}" target="_blank">Hier best&auml;tigen</a>
-                                        </td>
-                                    </tr>
-                                </table>
-                                <p>Sobald dein Konto aktiviert ist, kannst du direkt mit dem Cyber-Vorabcheck beginnen.
-                                </p>
-                                <p>Wir freuen uns, dir diese M&ouml;glichkeit bieten zu k&ouml;nnen und sind gespannt auf dein
-                                    Feedback.</p>
-                                <p>Viele Gr&uuml;&szlig;e</br>
-                                    Team FRIDA</p>
-                            </td>
-                        </tr>
-                        <!-- END MAIN CONTENT AREA -->
-                    </table>
-                    <!-- END CENTERED WHITE CONTAINER -->
-                </div>
-            </td>
-            <td>&nbsp;</td>
-        </tr>
-    </table>
+    <div class="wrapper">
+        <div class="header">
+            <div class="brand">FRIDA</div>
+            <h1>Registrierung bestätigen</h1>
+        </div>
+        <div class="body-content">
+            <h2>Hallo {{username}},</h2>
+            <p>vielen Dank für deine Registrierung beim <strong>Cyber-Vorabcheck</strong>.</p>
+            <p>Du bist nur noch einen Schritt von der Aktivierung deines Kontos entfernt. Klicke auf den Button unten, um deine E-Mail-Adresse zu bestätigen und den Vorgang abzuschließen.</p>
+            <div class="btn-wrapper">
+                <a href="{{confirmationLink}}" class="btn" target="_blank">E-Mail bestätigen</a>
+            </div>
+            <p>Sobald dein Konto aktiviert ist, kannst du direkt mit dem Cyber-Vorabcheck beginnen. Wir freuen uns auf dein Feedback!</p>
+            <div class="divider"></div>
+        </div>
+        <div class="footer">
+            <p class="team">Team FRIDA</p>
+            <p>Falls du diese E-Mail nicht angefordert hast, kannst du sie einfach ignorieren.</p>
+        </div>
+    </div>
 </body>
-
 </html>

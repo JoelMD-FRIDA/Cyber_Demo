@@ -1,0 +1,5 @@
+._*
+.git
+node_modules
+.next
+.turbo

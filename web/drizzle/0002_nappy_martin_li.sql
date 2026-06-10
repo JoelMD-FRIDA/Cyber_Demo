@@ -1,0 +1,4 @@
+ALTER TABLE "domain_check_categories" ADD COLUMN "icon_file_document_id" uuid;--> statement-breakpoint
+ALTER TABLE "domain_check_providers" ADD COLUMN "logo_file_document_id" uuid;--> statement-breakpoint
+ALTER TABLE "domain_check_categories" ADD CONSTRAINT "domain_check_categories_icon_file_document_id_file_documents_id_fk" FOREIGN KEY ("icon_file_document_id") REFERENCES "public"."file_documents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "domain_check_providers" ADD CONSTRAINT "domain_check_providers_logo_file_document_id_file_documents_id_fk" FOREIGN KEY ("logo_file_document_id") REFERENCES "public"."file_documents"("id") ON DELETE set null ON UPDATE no action;

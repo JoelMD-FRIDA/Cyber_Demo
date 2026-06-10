@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.env
+.env*.local
+.DS_Store
+.omo/
+.playwright-mcp/
+1TB/
+.mendix-cache/
+deployment/
+extraction/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg

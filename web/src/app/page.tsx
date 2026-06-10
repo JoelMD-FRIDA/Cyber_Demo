@@ -148,7 +148,7 @@ function AnonymousHome() {
                 prüfen — schnell, zuverlässig und DSGVO-konform.
               </p>
 
-              <div className="mt-[var(--frida-space-large)] flex w-full flex-col items-stretch gap-[var(--frida-space-medium)] sm:w-auto sm:flex-row sm:items-center">
+          <div className="mt-[var(--frida-space-large)] flex w-full flex-col items-stretch gap-[var(--frida-space-medium)] sm:w-auto sm:flex-row sm:justify-center">
                 <Link href="/register" className="sm:min-w-48">
                   <Button className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] bg-[var(--frida-primary)] px-[var(--frida-space-large)] text-[var(--frida-surface)] hover:bg-[var(--frida-brand-hover)]">
                     <UserPlusIcon className="size-5" />

@@ -16,6 +16,7 @@ import {
   LogInIcon,
   UserPlusIcon,
   LayoutDashboardIcon,
+  ArrowUpIcon,
 } from "lucide-react";
 
 type UserState = {
@@ -115,6 +116,7 @@ export default function Home() {
 function AnonymousHome() {
   return (
     <div className="bg-[var(--frida-app-bg)]">
+      <ScrollToTop />
       <section className="relative isolate overflow-hidden bg-[image:var(--frida-gradient-background)] px-[var(--frida-space-medium)] py-[var(--frida-space-large)] text-[var(--frida-surface)] sm:px-[var(--frida-space-large)] sm:py-[var(--frida-space-largest)]">
         <div className="frida-line-motif -z-10 opacity-70" />
 
@@ -251,23 +253,6 @@ function AnonymousHome() {
             Registrieren Sie sich noch heute und nutzen Sie das FRIDA Domain
             Check Tool kostenlos.
           </p>
-          <div className="mt-[var(--frida-space-large)] flex w-full flex-col items-stretch gap-[var(--frida-space-medium)] sm:w-auto sm:flex-row sm:items-center">
-            <Link href="/register" className="sm:min-w-48">
-              <Button className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] bg-[var(--frida-primary)] px-[var(--frida-space-large)] text-[var(--frida-surface)] hover:bg-[var(--frida-brand-hover)]">
-                <UserPlusIcon className="size-5" />
-                Kostenlos registrieren
-              </Button>
-            </Link>
-            <Link href="/login" className="sm:min-w-48">
-              <Button
-                variant="outline"
-                className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] border-[var(--frida-primary)] px-[var(--frida-space-large)] text-[var(--frida-primary)] hover:bg-transparent hover:text-[var(--frida-primary)]"
-              >
-                <LogInIcon className="size-5" />
-                Anmelden
-              </Button>
-            </Link>
-          </div>
         </div>
       </section>
     </div>
@@ -282,6 +267,7 @@ function AuthenticatedHome({ user }: { user: UserState }) {
 
   return (
     <div className="bg-[var(--frida-app-bg)]">
+      <ScrollToTop />
       <section className="bg-[image:var(--frida-gradient-background)] px-[var(--frida-space-medium)] py-[var(--frida-space-large)] text-[var(--frida-surface)] sm:px-[var(--frida-space-large)] sm:py-[var(--frida-space-largest)]">
         <div className="mx-auto max-w-6xl">
           <Card className="rounded-[var(--frida-card-radius)] bg-[var(--frida-surface)] p-[var(--frida-space-large)] text-[var(--frida-text)] ring-0 sm:p-[var(--frida-space-largest)]">
@@ -413,4 +399,24 @@ function AuthenticatedHome({ user }: { user: UserState }) {
       </section>
     </div>
   );
+}
+
+function ScrollToTop() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 400);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return visible ? (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      className="fixed bottom-6 right-6 z-50 flex size-10 items-center justify-center rounded-full bg-[var(--frida-primary)] text-white shadow-lg transition-transform hover:scale-110"
+      aria-label="Nach oben"
+    >
+      <ArrowUpIcon className="size-5" />
+    </button>
+  ) : null;
 }

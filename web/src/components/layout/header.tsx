@@ -108,19 +108,6 @@ export function Header({
               <LogOutIcon className="size-4" />
             </Button>
           </div>
-        ) : userRole === "anonymous" ? (
-          <div className="flex items-center gap-2">
-            <Link href="/login" prefetch={false}>
-              <Button variant="ghost" size="sm" className="text-[var(--stitch-primary)] hover:bg-[var(--stitch-surface-container)] hover:text-[var(--stitch-on-secondary-fixed-variant)]">
-                Login
-              </Button>
-            </Link>
-            <Link href="/register" prefetch={false}>
-              <Button size="sm" className="bg-[var(--stitch-primary)] text-white hover:bg-[var(--stitch-on-secondary-fixed-variant)]">
-                Register
-              </Button>
-            </Link>
-          </div>
         ) : null}
       </div>
     </header>

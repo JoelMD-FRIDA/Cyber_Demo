@@ -158,7 +158,7 @@ function AnonymousHome() {
                 <Link href="/login" className="sm:min-w-48">
                   <Button
                     variant="outline"
-                    className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] border-[var(--frida-primary)] px-[var(--frida-space-large)] text-[var(--frida-primary)]"
+                    className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] border-[var(--frida-primary)] px-[var(--frida-space-large)] text-[var(--frida-primary)] hover:bg-transparent hover:text-[var(--frida-primary)]"
                   >
                     <LogInIcon className="size-5" />
                     Anmelden
@@ -261,7 +261,7 @@ function AnonymousHome() {
             <Link href="/login" className="sm:min-w-48">
               <Button
                 variant="outline"
-                className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] border-[var(--frida-surface)] px-[var(--frida-space-large)] text-[var(--frida-surface)]"
+                className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] border-[var(--frida-surface)] px-[var(--frida-space-large)] text-[var(--frida-surface)] hover:bg-transparent hover:text-[var(--frida-surface)]"
               >
                 <LogInIcon className="size-5" />
                 Anmelden

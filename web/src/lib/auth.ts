@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRY = '24h';
 const SALT_ROUNDS = 10;
 
@@ -30,6 +30,7 @@ export function generateJWT(user: {
   username: string | null;
   role: string;
 }): string {
+  if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is not set');
   return jwt.sign(
     { id: user.id, email: user.email, username: user.username, role: user.role },
     JWT_SECRET,

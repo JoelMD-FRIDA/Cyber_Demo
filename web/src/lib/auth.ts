@@ -41,7 +41,8 @@ export function generateJWT(user: {
 export async function verifyJWT(
   token: string,
 ): Promise<{ id: string; email: string; username: string | null; role: string }> {
-  const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+  if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is not set');
+  const decoded = jwt.verify(token, JWT_SECRET) as unknown as JWTPayload;
   return { id: decoded.id, email: decoded.email, username: decoded.username ?? null, role: decoded.role };
 }
 

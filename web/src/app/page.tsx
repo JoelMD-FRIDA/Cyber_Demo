@@ -251,9 +251,9 @@ function AnonymousHome() {
             Registrieren Sie sich noch heute und nutzen Sie das FRIDA Domain
             Check Tool kostenlos.
           </p>
-          <div className="mt-[var(--frida-space-large)] flex flex-col items-stretch gap-[var(--frida-space-medium)] sm:flex-row sm:justify-center">
+          <div className="mt-[var(--frida-space-large)] flex w-full flex-col items-stretch gap-[var(--frida-space-medium)] sm:w-auto sm:flex-row sm:items-center">
             <Link href="/register" className="sm:min-w-48">
-              <Button className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] bg-[var(--frida-surface)] px-[var(--frida-space-large)] text-[var(--frida-primary)] hover:bg-[var(--frida-gray-primary)] hover:text-[var(--frida-brand-hover)]">
+              <Button className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] bg-[var(--frida-primary)] px-[var(--frida-space-large)] text-[var(--frida-surface)] hover:bg-[var(--frida-brand-hover)]">
                 <UserPlusIcon className="size-5" />
                 Kostenlos registrieren
               </Button>
@@ -261,7 +261,7 @@ function AnonymousHome() {
             <Link href="/login" className="sm:min-w-48">
               <Button
                 variant="outline"
-                className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] border-[var(--frida-surface)] px-[var(--frida-space-large)] text-[var(--frida-surface)] hover:bg-transparent hover:text-[var(--frida-surface)]"
+                className="h-11 w-full gap-[var(--frida-space-small)] rounded-[var(--frida-radius-default)] border-[var(--frida-primary)] px-[var(--frida-space-large)] text-[var(--frida-primary)] hover:bg-transparent hover:text-[var(--frida-primary)]"
               >
                 <LogInIcon className="size-5" />
                 Anmelden

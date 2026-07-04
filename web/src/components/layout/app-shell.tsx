@@ -24,6 +24,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const savedLocale = localStorage.getItem("locale") as "de" | "en" | null;
+    document.documentElement.lang = savedLocale ?? "de";
+  }, []);
+
+  useEffect(() => {
     const skipsSessionProbe =
       pathname === "/login" ||
       pathname === "/register" ||

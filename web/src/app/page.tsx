@@ -121,7 +121,7 @@ function AnonymousHome() {
         <div className="frida-line-motif -z-10 opacity-70" />
 
         <div className="mx-auto flex min-h-[calc(100vh_-_var(--frida-topbar-height)_-_var(--frida-space-largest))] max-w-6xl items-center justify-center">
-          <Card className="w-full max-w-3xl rounded-[var(--frida-card-radius)] bg-[var(--frida-surface)] p-[var(--frida-space-large)] text-center text-[var(--frida-text)] ring-0 sm:p-[var(--frida-space-largest)]">
+          <Card className="w-full max-w-3xl animate-fadeUp rounded-[var(--frida-card-radius)] bg-[var(--frida-surface)] p-[var(--frida-space-large)] text-center text-[var(--frida-text)] ring-0 sm:p-[var(--frida-space-largest)]">
             <CardContent className="flex flex-col items-center px-0">
               <Image
                 src="/frida-icon.png"
@@ -184,12 +184,13 @@ function AnonymousHome() {
           </div>
 
           <div className="grid gap-[var(--frida-space-large)] sm:grid-cols-2 lg:grid-cols-4">
-            {features.map((feature) => {
+            {features.map((feature, i) => {
               const Icon = feature.icon;
               return (
                 <Card
                   key={feature.title}
-                  className="group rounded-[var(--frida-card-radius)] bg-[var(--frida-surface)] p-[var(--frida-space-large)] ring-1 ring-[var(--frida-border)] transition-colors hover:ring-[var(--frida-primary)]"
+                  className="group animate-fadeUp rounded-[var(--frida-card-radius)] bg-[var(--frida-surface)] p-[var(--frida-space-large)] ring-1 ring-[var(--frida-border)] transition-colors hover:ring-[var(--frida-primary)]"
+                  style={{ animationDelay: `${(i + 1) * 0.1}s` }}
                 >
                   <CardHeader className="px-0">
                     <div className="mb-[var(--frida-space-small)] flex size-10 items-center justify-center rounded-[var(--frida-radius-default)] bg-[var(--frida-primary)] text-[var(--frida-surface)] transition-colors group-hover:bg-[var(--frida-brand-hover)]">
@@ -223,10 +224,11 @@ function AnonymousHome() {
           </div>
 
           <div className="grid gap-[var(--frida-space-large)] md:grid-cols-3">
-            {steps.map((item) => (
+            {steps.map((item, i) => (
               <div
                 key={item.step}
-                className="rounded-[var(--frida-card-transparent-radius)] border border-[var(--frida-transparent-card-border-color)] p-[var(--frida-space-large)] text-center"
+                className="animate-fadeUp rounded-[var(--frida-card-transparent-radius)] border border-[var(--frida-transparent-card-border-color)] p-[var(--frida-space-large)] text-center"
+                style={{ animationDelay: `${(i + 1) * 0.1}s` }}
               >
                 <div className="mx-auto flex size-12 items-center justify-center rounded-[var(--frida-radius-default)] bg-[var(--frida-primary)] text-[var(--frida-font-size-large)] font-semibold text-[var(--frida-surface)]">
                   {item.step}
@@ -245,7 +247,7 @@ function AnonymousHome() {
 
       <section className="relative isolate overflow-hidden bg-[image:var(--frida-gradient-background)] px-[var(--frida-space-medium)] py-[var(--frida-space-large)] text-[var(--frida-surface)] sm:px-[var(--frida-space-large)] sm:py-[var(--frida-space-largest)]">
         <div className="frida-line-motif -z-10 opacity-60" />
-        <div className="mx-auto max-w-4xl text-center">
+        <div className="mx-auto animate-fadeUp max-w-4xl text-center">
           <h2 className="text-[var(--frida-font-size-h2)] font-semibold leading-[var(--frida-line-height-base)] tracking-tight">
             Bereit loszulegen?
           </h2>

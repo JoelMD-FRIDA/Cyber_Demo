@@ -3,7 +3,9 @@ node_modules/
 .env
 .env*.local
 .DS_Store
+**/._*
 .omo/
+.sisyphus/
 .playwright-mcp/
 1TB/
 .mendix-cache/

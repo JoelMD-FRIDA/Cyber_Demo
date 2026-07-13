@@ -4,6 +4,7 @@ import { db, users, activationRequests, registrationKeys } from '@/db';
 import { eq, sql } from 'drizzle-orm';
 import { hashPassword } from '@/lib/auth';
 import { sendWithTemplate } from '@/lib/email';
+import { getPublicBaseUrl, isSmtpConfiguredFromEnv } from '@/lib/runtime-env';
 
 export async function POST(request: NextRequest) {
   try {
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
     const passwordHash = await hashPassword(password);
     const fullname = `${firstname} ${lastname}`;
 
-    const smtpConfigured = !!(process.env.SMTP_HOST);
+    const smtpConfigured = isSmtpConfiguredFromEnv();
     const [newUser] = await db
       .insert(users)
       .values({
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
 
     if (smtpConfigured) {
       const activationToken = crypto.randomUUID();
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+      const baseUrl = getPublicBaseUrl();
       const confirmationLink = `${baseUrl}/activate/${activationToken}`;
 
       await db.insert(activationRequests).values({

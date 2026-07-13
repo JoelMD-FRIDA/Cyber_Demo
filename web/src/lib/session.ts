@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateJWT, verifyJWT } from './auth';
 import { COOKIE_NAME, MAX_AGE } from './auth.constants';
+import { isSecureCookieEnvironment } from './runtime-env';
 
 export interface SessionUser {
   id: string;
@@ -14,7 +15,7 @@ export function setSession(
   user: { id: string; email: string; username: string | null; role: string },
 ): void {
   const token = generateJWT(user);
-  const isSecure = process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_BASE_URL?.startsWith('https');
+  const isSecure = isSecureCookieEnvironment();
   response.cookies.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: isSecure,
@@ -25,7 +26,7 @@ export function setSession(
 }
 
 export function clearSession(response: NextResponse): void {
-  const isSecure = process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_BASE_URL?.startsWith('https');
+  const isSecure = isSecureCookieEnvironment();
   response.cookies.set(COOKIE_NAME, '', {
     httpOnly: true,
     secure: isSecure,

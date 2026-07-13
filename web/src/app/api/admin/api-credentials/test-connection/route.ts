@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
 import { Role } from '@/lib/rbac';
 import { decryptValue } from '@/lib/crypto';
+import { isFixtureConnectionMode } from '@/lib/runtime-env';
 
 async function requireAdmin(request: NextRequest) {
   const session = await getSession(request);
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const isFixtureMode = process.env.TEST_CONNECTION_FIXTURE === 'true' || !process.env.CYSMO_API_BASE_URL;
+  const isFixtureMode = isFixtureConnectionMode();
 
   if (isFixtureMode) {
     // Fixture mode: validate credential format only, no real connection

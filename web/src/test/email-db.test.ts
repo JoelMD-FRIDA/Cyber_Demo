@@ -32,7 +32,7 @@ import { enqueueEmail } from "@/lib/email-queue";
 
 function mockQuery<T>(rows: T[]): Record<string, unknown> & PromiseLike<T[]> {
   const query = {
-    then: (resolve: (v: T[]) => void) => { resolve(rows); return Promise.resolve(rows); },
+    then: (...args: Parameters<Promise<T[]>["then"]>) => Promise.resolve(rows).then(...args),
     catch: () => query,
     finally: () => query,
     innerJoin: () => query,
@@ -47,6 +47,7 @@ function mockQuery<T>(rows: T[]): Record<string, unknown> & PromiseLike<T[]> {
 describe("email DB-backed functions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   describe("getDbTemplate", () => {
@@ -92,13 +93,11 @@ describe("email DB-backed functions", () => {
 
   describe("sendWithTemplate", () => {
     it("queues email when no SMTP configured", async () => {
-      mockSelect
-        .mockReturnValueOnce(
-          mockQuery([
-            { subject: "Welcome", body: "<p>Hi {{username}}</p>", fromAddress: null, fromDisplayName: null },
-          ]),
-        )
-        .mockReturnValueOnce(mockQuery([]));
+      mockSelect.mockReturnValueOnce(
+        mockQuery([
+          { subject: "Welcome", body: "<p>Hi {{username}}</p>", fromAddress: null, fromDisplayName: null },
+        ]),
+      );
 
       const { sendWithTemplate } = await import("@/lib/email");
       const result = await sendWithTemplate("user@test.com", "registration", {
@@ -112,29 +111,22 @@ describe("email DB-backed functions", () => {
     });
 
     it("sends immediately when SMTP is configured", async () => {
+      vi.stubEnv("SMTP_HOST", "smtp.example.com");
+      vi.stubEnv("SMTP_PORT", "2525");
+      vi.stubEnv("SMTP_SECURE", "false");
+      vi.stubEnv("SMTP_USER", "user@example.com");
+      vi.stubEnv("SMTP_PASS", "secret");
+      vi.stubEnv("EMAIL_FROM", "noreply@example.com");
+      vi.stubEnv("EMAIL_FROM_NAME", "Test App");
+
       const mockSendMail = vi.fn().mockResolvedValue({ messageId: "mock-msg-id" });
       mockCreateTransport.mockReturnValue({ sendMail: mockSendMail });
 
-      mockSelect
-        .mockReturnValueOnce(
-          mockQuery([
-            { subject: "Welcome", body: "<p>Hi {{username}}</p>", fromAddress: null, fromDisplayName: null },
-          ]),
-        )
-        .mockReturnValueOnce(
-          mockQuery([
-            {
-              host: "smtp.example.com",
-              port: 587,
-              ssl: false,
-              tls: true,
-              user: "user@example.com",
-              pass: "secret",
-              fromAddress: "noreply@example.com",
-              fromDisplayName: "Test App",
-            },
-          ]),
-        );
+      mockSelect.mockReturnValueOnce(
+        mockQuery([
+          { subject: "Welcome", body: "<p>Hi {{username}}</p>", fromAddress: null, fromDisplayName: null },
+        ]),
+      );
 
       const { sendWithTemplate } = await import("@/lib/email");
       const result = await sendWithTemplate("user@test.com", "registration", {
@@ -143,8 +135,15 @@ describe("email DB-backed functions", () => {
 
       expect(result.sent).toBe(true);
       expect(result.queued).toBeUndefined();
+      expect(mockCreateTransport).toHaveBeenCalledWith({
+        host: "smtp.example.com",
+        port: 2525,
+        secure: false,
+        auth: { user: "user@example.com", pass: "secret" },
+      });
       expect(mockSendMail).toHaveBeenCalledWith(
         expect.objectContaining({
+          from: '"Test App" <noreply@example.com>',
           to: "user@test.com",
           subject: "Welcome",
           html: "<p>Hi John</p>",

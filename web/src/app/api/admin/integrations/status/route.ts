@@ -3,6 +3,13 @@ import { getSession } from "@/lib/session";
 import { Role } from "@/lib/rbac";
 import { db } from "@/db";
 import { ldapConfigurations, incomingEmailConfigs } from "@/db";
+import {
+  envStatuses,
+  getCysmoConfigFromEnv,
+  getPgpPrivateConfigFromEnv,
+  getPgpPublicKeyFromEnv,
+  getSmtpConfigFromEnv,
+} from "@/lib/runtime-env";
 
 async function requireAdmin(request: NextRequest) {
   const session = await getSession(request);
@@ -44,40 +51,40 @@ export async function GET(request: NextRequest) {
   if (adminCheck.error) return adminCheck.error;
 
   // ── SMTP ─────────────────────────────────────────────────────────────────
-  const smtpVars: Record<string, "set" | "unset"> = {
-    SMTP_HOST: process.env.SMTP_HOST ? "set" : "unset",
-    SMTP_PORT: process.env.SMTP_PORT ? "set" : "unset",
-    SMTP_SECURE: process.env.SMTP_SECURE ? "set" : "unset",
-    SMTP_USER: process.env.SMTP_USER ? "set" : "unset",
-    SMTP_PASS: process.env.SMTP_PASS ? "set" : "unset",
-    EMAIL_FROM: process.env.EMAIL_FROM ? "set" : "unset",
-    EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME ? "set" : "unset",
-  };
-  const smtpSetCount = Object.values(smtpVars).filter((v) => v === "set").length;
+  const smtpVars = envStatuses([
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_SECURE",
+    "SMTP_USER",
+    "SMTP_PASS",
+    "EMAIL_FROM",
+    "EMAIL_FROM_NAME",
+  ]);
+  const smtpHasAny = Object.values(smtpVars).some((v) => v === "set");
   const smtpStatus: IntegrationStatus =
-    smtpSetCount >= 4 ? "configured" : smtpSetCount > 0 ? "fixture" : "missing";
+    getSmtpConfigFromEnv() ? "configured" : smtpHasAny ? "fixture" : "missing";
 
   // ── Cysmo / OAuth ──────────────────────────────────────────────────────
-  const cysmoVars: Record<string, "set" | "unset"> = {
-    CYSMO_API_BASE_URL: process.env.CYSMO_API_BASE_URL ? "set" : "unset",
-    CYSMO_CLIENT_ID: process.env.CYSMO_CLIENT_ID ? "set" : "unset",
-    CYSMO_CLIENT_SECRET: process.env.CYSMO_CLIENT_SECRET ? "set" : "unset",
-    OAUTH_CLIENT_ID: process.env.OAUTH_CLIENT_ID ? "set" : "unset",
-    OAUTH_CLIENT_SECRET: process.env.OAUTH_CLIENT_SECRET ? "set" : "unset",
-  };
-  const cysmoSetCount = Object.values(cysmoVars).filter((v) => v === "set").length;
+  const cysmoVars = envStatuses([
+    "CYSMO_API_BASE_URL",
+    "CYSMO_CLIENT_ID",
+    "CYSMO_CLIENT_SECRET",
+  ]);
+  const cysmoHasAny = Object.values(cysmoVars).some((v) => v === "set");
   const cysmoStatus: IntegrationStatus =
-    cysmoSetCount >= 3 ? "configured" : cysmoSetCount > 0 ? "fixture" : "missing";
+    getCysmoConfigFromEnv() ? "configured" : cysmoHasAny ? "fixture" : "missing";
 
   // ── PGP Encryption ─────────────────────────────────────────────────────
-  const pgpVars: Record<string, "set" | "unset"> = {
-    PGP_PUBLIC_KEY: process.env.PGP_PUBLIC_KEY ? "set" : "unset",
-    PGP_PRIVATE_KEY: process.env.PGP_PRIVATE_KEY ? "set" : "unset",
-    PGP_PASSPHRASE: process.env.PGP_PASSPHRASE ? "set" : "unset",
-  };
-  const pgpSetCount = Object.values(pgpVars).filter((v) => v === "set").length;
+  const pgpVars = envStatuses([
+    "PGP_PUBLIC_KEY",
+    "PGP_PRIVATE_KEY",
+    "PGP_PASSPHRASE",
+  ]);
+  const pgpHasAny = Object.values(pgpVars).some((v) => v === "set");
   const pgpStatus: IntegrationStatus =
-    pgpSetCount >= 3 ? "configured" : pgpSetCount > 0 ? "fixture" : "missing";
+    getPgpPublicKeyFromEnv() && getPgpPrivateConfigFromEnv()
+      ? "configured"
+      : pgpHasAny ? "fixture" : "missing";
 
   // ── LDAP ────────────────────────────────────────────────────────────────
   let ldapConfigured = false;
@@ -119,10 +126,10 @@ export async function GET(request: NextRequest) {
       envVars: smtpVars,
       guidance:
         smtpStatus === "configured"
-          ? "All required SMTP variables are set. Email sending is operational."
+          ? "Required Vercel SMTP variables are set. Email sending is operational."
           : smtpStatus === "fixture"
-            ? "Some SMTP variables are set, but not enough for production. Mailcatcher/Mailpit will work in dev."
-            : "Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, and EMAIL_FROM_NAME in .env.",
+            ? "Some SMTP variables are set, but SMTP_HOST, SMTP_USER, and SMTP_PASS are required for production."
+            : "Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, EMAIL_FROM, and EMAIL_FROM_NAME in Vercel Project Settings → Environment Variables.",
       docLinks: [
         "https://www.nodemailer.com/smtp/",
       ],
@@ -139,7 +146,7 @@ export async function GET(request: NextRequest) {
           ? "Cysmo API is ready. OAuth tokens will be retrieved automatically."
           : cysmoStatus === "fixture"
             ? "Partial Cysmo config. Test fixtures will work; real API calls will fail."
-            : "Set CYSMO_API_BASE_URL, CYSMO_CLIENT_ID, and CYSMO_CLIENT_SECRET in .env. OAUTH_* vars are fallbacks.",
+            : "Set CYSMO_API_BASE_URL, CYSMO_CLIENT_ID, and CYSMO_CLIENT_SECRET in Vercel Project Settings → Environment Variables.",
       docLinks: [
         "https://oauth.net/2/client-credentials/",
       ],
@@ -156,7 +163,7 @@ export async function GET(request: NextRequest) {
           ? "Full PGP key set loaded. Tokens will be encrypted at rest and decrypted on retrieval."
           : pgpStatus === "fixture"
             ? "Partial PGP config. If PUBLIC key is set, encryption works; decryption needs PRIVATE key + PASSPHRASE."
-            : "Generate a PGP key pair and set PGP_PUBLIC_KEY, PGP_PRIVATE_KEY, and PGP_PASSPHRASE in .env.",
+            : "Generate a PGP key pair and set PGP_PUBLIC_KEY, PGP_PRIVATE_KEY, and PGP_PASSPHRASE in Vercel Project Settings → Environment Variables.",
       docLinks: [
         "https://www.openpgp.org/",
       ],

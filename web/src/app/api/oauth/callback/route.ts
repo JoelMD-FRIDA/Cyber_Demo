@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, domainCheckProviders } from '@/db';
 import { exchangeCodeForToken, storeToken, verifyState } from '@/lib/oauth';
-import { decryptString } from '@/lib/pgp';
+import { getCysmoConfigFromEnv } from '@/lib/runtime-env';
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,42 +38,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Determine token endpoint
-    const baseUrl = provider.websiteUrl || process.env.CYSMO_API_BASE_URL;
-    if (!baseUrl) {
+    const cysmoConfig = getCysmoConfigFromEnv();
+    if (!cysmoConfig) {
       return NextResponse.json(
-        { error: 'Provider token endpoint not configured' },
+        { error: 'Cysmo environment variables not configured' },
         { status: 500 },
       );
     }
-    const tokenUrl = `${baseUrl.replace(/\/+$/, '')}/oauth/token`;
-
-    // Resolve client credentials
-    const clientId = process.env.OAUTH_CLIENT_ID || process.env.CYSMO_CLIENT_ID || '';
-    let clientSecret = process.env.OAUTH_CLIENT_SECRET || process.env.CYSMO_CLIENT_SECRET || '';
-
-    // If provider has an encrypted API key, use it as the client secret
-    if (provider.apiKeyEncrypted) {
-      const privateKeyArmored = process.env.PGP_PRIVATE_KEY;
-      const passphrase = process.env.PGP_PASSPHRASE;
-      if (privateKeyArmored && passphrase) {
-        clientSecret = await decryptString(provider.apiKeyEncrypted, privateKeyArmored, passphrase);
-      }
-    }
-
-    if (!clientId || !clientSecret) {
-      return NextResponse.json(
-        { error: 'OAuth client credentials not configured' },
-        { status: 500 },
-      );
-    }
+    const tokenUrl = `${cysmoConfig.apiBaseUrl.replace(/\/+$/, '')}/oauth/token`;
 
     // Exchange authorization code for tokens
     const tokenResponse = await exchangeCodeForToken(
       code,
       tokenUrl,
-      clientId,
-      clientSecret,
+      cysmoConfig.clientId,
+      cysmoConfig.clientSecret,
       redirectUri,
     );
 

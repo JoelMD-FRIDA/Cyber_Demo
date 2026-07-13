@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, users, forgotPasswordRequests } from '@/db';
 import { generateResetToken } from '@/lib/auth';
 import { sendWithTemplate } from '@/lib/email';
+import { getPublicBaseUrl } from '@/lib/runtime-env';
 
 const RESET_TOKEN_EXPIRY_HOURS = 1;
 
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     const validUntil = new Date();
     validUntil.setHours(validUntil.getHours() + RESET_TOKEN_EXPIRY_HOURS);
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const baseUrl = getPublicBaseUrl();
     const resetLink = `${baseUrl}/reset-password?token=${resetToken}`;
 
     const fullname = [user.firstname, user.lastname].filter(Boolean).join(' ') || user.email;

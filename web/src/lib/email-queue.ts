@@ -1,15 +1,4 @@
-import { Pool, type PoolClient } from "pg";
-
-let pool: Pool | null = null;
-
-function getPool(): Pool {
-  if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-    });
-  }
-  return pool;
-}
+import { dbPool } from "@/db";
 
 export interface QueuedEmail {
   id: string;
@@ -29,7 +18,7 @@ export async function enqueueEmail(
   body: string,
   scheduledAt?: Date,
 ): Promise<string> {
-  const result = await getPool().query(
+  const result = await dbPool.query<{ id: string }>(
     `INSERT INTO email_queue ("to", subject, body, status, scheduled_at, retry_count)
      VALUES ($1, $2, $3, 'pending', $4, 0)
      RETURNING id`,
@@ -39,7 +28,7 @@ export async function enqueueEmail(
 }
 
 export async function getPendingEmails(limit = 50): Promise<QueuedEmail[]> {
-  const result = await getPool().query(
+  const result = await dbPool.query<QueuedEmail>(
     `SELECT id, "to", subject, body, status, scheduled_at, sent_at, retry_count, error_message
      FROM email_queue
      WHERE status = 'pending'
@@ -56,7 +45,7 @@ export async function updateEmailStatus(
   status: "pending" | "sent" | "failed",
   errorMessage?: string,
 ): Promise<void> {
-  const client: PoolClient = await getPool().connect();
+  const client = await dbPool.connect();
   try {
     await client.query("BEGIN");
 

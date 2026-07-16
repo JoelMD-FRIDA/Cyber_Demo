@@ -37,20 +37,13 @@ describe('sendCheckRequest', () => {
     });
   });
 
-  it('fetches the current TECH report snapshot when polling times out before it is ready', async () => {
-    vi.useFakeTimers();
+  it('fetches the current TECH report snapshot immediately when the report is still running', async () => {
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       id: 'company-1',
       reports: [{ id: 'report-1', state: 'NEW', running: true }],
     }), { status: 200 }));
-    for (let attempt = 1; attempt <= 8; attempt++) {
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
-        id: 'company-1',
-        reports: [{ id: 'report-1', state: 'IN_PROGRESS', running: true }],
-      }), { status: 200 }));
-    }
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       id: 'report-1',
       state: 'IN_PROGRESS',
@@ -58,18 +51,17 @@ describe('sendCheckRequest', () => {
       entrypoints: { domains: ['youtube.com'] },
     }), { status: 200 }));
 
-    const resultPromise = sendCheckRequest('https://api.cysmo.de', 'token-1', 'youtube.com');
-    await vi.runAllTimersAsync();
-    const result = await resultPromise;
+    const result = await sendCheckRequest('https://api.cysmo.de', 'token-1', 'youtube.com');
 
-    expect(fetchMock).toHaveBeenNthCalledWith(10, 'https://api.cysmo.de/v2/reports/report-1?dataMode=TECH', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://api.cysmo.de/v2/reports/report-1?dataMode=TECH', expect.objectContaining({
       method: 'GET',
     }));
     expect(result).toMatchObject({
       domain: 'youtube.com',
       status: 'partial',
       report: { id: 'report-1', state: 'IN_PROGRESS' },
-      partialReason: 'Cysmo report did not finish before the polling timeout.',
+      partialReason: 'Cysmo report is still running.',
     });
   });
 });

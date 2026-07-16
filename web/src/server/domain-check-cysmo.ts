@@ -56,6 +56,20 @@ export async function sendCheckRequest(
     };
   }
 
+  const runningReportId = findReportId(createResponse.body);
+  if (runningReportId) {
+    const report = await fetchReportResult({ apiBaseUrl, token, reportId: runningReportId });
+    return {
+      domain,
+      status: 'partial',
+      company: createResponse.body,
+      createResponse: createResponse.body,
+      report,
+      unacknowledgedSubdomains: getUnacknowledgedSubdomains(createResponse.body),
+      partialReason: 'Cysmo report is still running.',
+    };
+  }
+
   const deadline = Date.now() + REPORT_POLL_TIMEOUT_MS;
   let latestCompany = createResponse.body;
 

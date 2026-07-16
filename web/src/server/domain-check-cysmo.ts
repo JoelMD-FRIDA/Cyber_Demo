@@ -91,6 +91,20 @@ export async function sendCheckRequest(
     }
   }
 
+  const latestReportId = findReportId(latestCompany) ?? findReportId(createResponse.body);
+  if (latestReportId) {
+    const report = await fetchReportResult({ apiBaseUrl, token, reportId: latestReportId });
+    return {
+      domain,
+      status: 'partial',
+      company: latestCompany,
+      createResponse: createResponse.body,
+      report,
+      unacknowledgedSubdomains: getUnacknowledgedSubdomains(createResponse.body),
+      partialReason: 'Cysmo report did not finish before the polling timeout.',
+    };
+  }
+
   return {
     domain,
     status: 'partial',
@@ -164,6 +178,12 @@ function getIdFromBody(body: unknown): string | undefined {
 function findReadyReportId(body: unknown): string | undefined {
   const reports = getReports(body);
   const report = reports.find(isReportReady);
+  return report ? getString(report['id']) : undefined;
+}
+
+function findReportId(body: unknown): string | undefined {
+  const reports = getReports(body);
+  const report = reports.find((candidate) => getString(candidate['id']));
   return report ? getString(report['id']) : undefined;
 }
 

@@ -38,7 +38,11 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/");
+      const redirectPath = new URLSearchParams(window.location.search).get("redirect");
+      const destination = redirectPath?.startsWith("/") && !redirectPath.startsWith("//")
+        ? redirectPath
+        : "/";
+      router.push(destination);
       router.refresh();
     } catch {
       setError("An unexpected error occurred. Please try again.");

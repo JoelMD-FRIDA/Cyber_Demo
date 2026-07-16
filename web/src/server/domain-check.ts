@@ -60,6 +60,7 @@ export async function checkDomain(
   );
   const { structured, rich } = parseCheckResponse(rawResponse);
   const checkId = await storeCheckResults(userId, resolvedProviderId, resolvedCategoryId, url, structured, {
+    results: rich,
     hasAcceptedDisclaimer: hasAcceptedDisclaimer ?? false,
     disclaimerVersion: disclaimerVersion ?? CURRENT_DISCLAIMER_VERSION,
     providerCount: 1,

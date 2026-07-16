@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import type { StructuredDomainCheckResult } from './domain-check-types';
 
 export interface StoreCheckOptions {
+  results?: Record<string, unknown>;
   hasAcceptedDisclaimer?: boolean;
   disclaimerVersion?: string;
   providerCount?: number;
@@ -26,6 +27,7 @@ export async function storeCheckResults(
       providerId,
       categoryId,
       url,
+      results: options.results,
       status: options.status ?? 'completed',
       hasAcceptedDisclaimer: options.hasAcceptedDisclaimer ?? false,
       disclaimerAcceptedAt: options.hasAcceptedDisclaimer ? new Date() : null,

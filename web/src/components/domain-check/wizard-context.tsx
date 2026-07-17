@@ -225,16 +225,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      dispatch({
-        type: "SET_RESULTS",
-        payload: {
-          results: data.results,
-          structuredResults: data.structuredResults,
-          id: data.id,
-          remainingChecks: data.remainingChecks,
-          maxChecks: data.maxChecks,
-        },
-      });
       router.push(`/dashboard/domain-check/results/${data.id}`);
     } catch {
       dispatch({ type: "SET_ERROR", payload: "An unexpected error occurred. Please try again." });

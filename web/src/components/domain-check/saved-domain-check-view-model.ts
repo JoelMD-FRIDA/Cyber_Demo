@@ -49,7 +49,7 @@ export function buildViewModel(check: SavedDomainCheck): {
   return {
     summary,
     hasSpf: getBoolean(spf?.['hasSpf']) ?? check.structuredResults.resultsSPFRecord,
-    spfDetail: getString(spf?.['spfRecord']) ?? (check.structuredResults.hasSPFRecordResult ? 'SPF-signalen opgeslagen' : 'Geen SPF-record opgeslagen'),
+    spfDetail: getString(spf?.['spfRecord']) ?? (check.structuredResults.hasSPFRecordResult ? 'SPF-Signale gespeichert' : 'Kein SPF-Eintrag gespeichert'),
     portMeasurementCount: Array.isArray(ports) ? ports.length : getNumber(getRecord(ports)?.['openPorts']) ?? check.structuredResults.resultsOpenPorts,
     findings: getFindings(leaks, check.structuredResults),
   };
@@ -87,9 +87,9 @@ function getFindings(value: unknown, structured: StructuredResults): readonly Fi
   }
 
   const findings: Finding[] = [];
-  if (structured.resultsPWLeaks > 0) findings.push({ type: 'Wachtwoordlekken', severity: 'high', description: `${structured.resultsPWLeaks} wachtwoordlekken gevonden.`, source: 'Cysmo' });
-  if (structured.resultsEmailLeaks > 0) findings.push({ type: 'E-maillekken', severity: 'medium', description: `${structured.resultsEmailLeaks} e-maillekken gevonden.`, source: 'Cysmo' });
-  if (structured.resultsEoLSoftware > 0) findings.push({ type: 'EOL software', severity: 'medium', description: `${structured.resultsEoLSoftware} verouderde software-indicatoren gevonden.`, source: 'Cysmo' });
+  if (structured.resultsPWLeaks > 0) findings.push({ type: 'Passwortlecks', severity: 'high', description: `${structured.resultsPWLeaks} Passwortlecks gefunden.`, source: 'Cysmo' });
+  if (structured.resultsEmailLeaks > 0) findings.push({ type: 'E-Mail-Lecks', severity: 'medium', description: `${structured.resultsEmailLeaks} E-Mail-Lecks gefunden.`, source: 'Cysmo' });
+  if (structured.resultsEoLSoftware > 0) findings.push({ type: 'EOL-Software', severity: 'medium', description: `${structured.resultsEoLSoftware} veraltete Software-Indikatoren gefunden.`, source: 'Cysmo' });
   return findings;
 }
 

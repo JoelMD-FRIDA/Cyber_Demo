@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type Dispatch,
 } from "react";
+import { useRouter } from "next/navigation";
 
 export interface Provider {
   id: string;
@@ -180,6 +181,7 @@ const WizardContext = createContext<WizardContextValue | null>(null);
 
 export function WizardProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(wizardReducer, initialState);
+  const router = useRouter();
 
   const runDomainCheck = useCallback(async () => {
     if (!state.url) {
@@ -226,19 +228,20 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       dispatch({
         type: "SET_RESULTS",
         payload: {
-          results: (data as DomainCheckResponse).results,
-          structuredResults: (data as DomainCheckResponse).structuredResults,
-          id: (data as DomainCheckResponse).id,
-          remainingChecks: (data as DomainCheckResponse).remainingChecks,
-          maxChecks: (data as DomainCheckResponse).maxChecks,
+          results: data.results,
+          structuredResults: data.structuredResults,
+          id: data.id,
+          remainingChecks: data.remainingChecks,
+          maxChecks: data.maxChecks,
         },
       });
+      router.push(`/dashboard/domain-check/results/${data.id}`);
     } catch {
       dispatch({ type: "SET_ERROR", payload: "An unexpected error occurred. Please try again." });
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
     }
-  }, [state.url, state.providerId, state.categoryId, state.hasAcceptedDisclaimer, state.disclaimerVersion]);
+  }, [router, state.url, state.providerId, state.categoryId, state.hasAcceptedDisclaimer, state.disclaimerVersion]);
 
   const resetWizard = useCallback(() => {
     dispatch({ type: "RESET" });

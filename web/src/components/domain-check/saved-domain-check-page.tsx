@@ -7,27 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { DomainCheckResults, StructuredResults } from './wizard-context';
-
-type SavedView = 'results' | 'report';
-
-interface SavedDomainCheck {
-  id: string;
-  url: string;
-  status: string;
-  providerName: string;
-  categoryName: string;
-  createdAt: string;
-  remainingChecks: number;
-  maxChecks: number;
-  providerCount: number;
-  results: DomainCheckResults;
-  structuredResults: StructuredResults;
-}
-
-interface SavedDomainCheckResponse {
-  check: SavedDomainCheck;
-}
+import { buildViewModel, type SavedDomainCheck, type SavedDomainCheckResponse, type SavedView } from './saved-domain-check-view-model';
 
 interface SavedDomainCheckPageProps {
   checkId: string;
@@ -91,6 +71,8 @@ export function SavedDomainCheckPage({ checkId, view }: SavedDomainCheckPageProp
     }).format(new Date(check.createdAt));
   }, [check]);
 
+  const viewModel = useMemo(() => check ? buildViewModel(check) : null, [check]);
+
   const downloadReport = useCallback(() => {
     if (!check) {
       return;
@@ -121,6 +103,11 @@ export function SavedDomainCheckPage({ checkId, view }: SavedDomainCheckPageProp
     );
   }
 
+  const safeViewModel = viewModel;
+  if (!safeViewModel) {
+    return <PageShell title="Domeincheck niet gevonden" description="Deze scan kon niet worden verwerkt." />;
+  }
+
   const reportPage = view === 'report';
 
   return (
@@ -136,10 +123,10 @@ export function SavedDomainCheckPage({ checkId, view }: SavedDomainCheckPageProp
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
-        <MetricCard label="Totaal" value={check.results.summary.totalChecks} />
-        <MetricCard label="Geslaagd" value={check.results.summary.passed} tone="success" />
-        <MetricCard label="Waarschuwingen" value={check.results.summary.warnings} tone="warning" />
-        <MetricCard label="Mislukt" value={check.results.summary.failed} tone="danger" />
+        <MetricCard label="Totaal" value={safeViewModel.summary.totalChecks} />
+        <MetricCard label="Geslaagd" value={safeViewModel.summary.passed} tone="success" />
+        <MetricCard label="Waarschuwingen" value={safeViewModel.summary.warnings} tone="warning" />
+        <MetricCard label="Mislukt" value={safeViewModel.summary.failed} tone="danger" />
       </div>
 
       <Card>
@@ -151,14 +138,14 @@ export function SavedDomainCheckPage({ checkId, view }: SavedDomainCheckPageProp
           <CardDescription>Persistente scanresultaten voor SPF, poorten, lekken en Cysmo-indicatoren.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <ResultBlock label="SPF-record" value={check.results.spf.hasSpf ? 'Aanwezig' : 'Niet gevonden'} detail={check.results.spf.spfRecord ?? 'Geen SPF-record opgeslagen'} />
-          <ResultBlock label="Open poorten" value={String(check.structuredResults.resultsOpenPorts)} detail={`${check.results.ports.length} poortmetingen opgeslagen`} />
-          <ResultBlock label="Datalekken" value={String(check.structuredResults.resultsPWLeaks + check.structuredResults.resultsEmailLeaks)} detail={`${check.results.leaks.length} bevindingen opgeslagen`} />
+          <ResultBlock label="SPF-record" value={safeViewModel.hasSpf ? 'Aanwezig' : 'Niet gevonden'} detail={safeViewModel.spfDetail} />
+          <ResultBlock label="Open poorten" value={String(check.structuredResults.resultsOpenPorts)} detail={`${safeViewModel.portMeasurementCount} poortmetingen opgeslagen`} />
+          <ResultBlock label="Datalekken" value={String(check.structuredResults.resultsPWLeaks + check.structuredResults.resultsEmailLeaks)} detail={`${safeViewModel.findings.length} bevindingen opgeslagen`} />
           <ResultBlock label="EOL software" value={String(check.structuredResults.resultsEoLSoftware)} detail={check.structuredResults.hasSoftwareResults ? 'Softwarecontrole beschikbaar' : 'Geen softwarebevindingen'} />
         </CardContent>
       </Card>
 
-      {check.results.leaks.length > 0 && (
+      {safeViewModel.findings.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -167,14 +154,14 @@ export function SavedDomainCheckPage({ checkId, view }: SavedDomainCheckPageProp
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {check.results.leaks.map((leak) => (
-              <div key={`${leak.type}-${leak.source}-${leak.description}`} className="rounded-[var(--stitch-card-radius)] border border-[var(--stitch-outline-variant)] bg-[var(--stitch-surface-container-low)] p-3">
+            {safeViewModel.findings.map((finding) => (
+              <div key={`${finding.type}-${finding.source}-${finding.description}`} className="rounded-[var(--stitch-card-radius)] border border-[var(--stitch-outline-variant)] bg-[var(--stitch-surface-container-low)] p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-[var(--stitch-on-surface)]">{leak.type}</p>
-                  <Badge variant={leak.severity === 'critical' || leak.severity === 'high' ? 'destructive' : 'outline'}>{leak.severity}</Badge>
+                  <p className="font-semibold text-[var(--stitch-on-surface)]">{finding.type}</p>
+                  <Badge variant={finding.severity === 'critical' || finding.severity === 'high' ? 'destructive' : 'outline'}>{finding.severity}</Badge>
                 </div>
-                <p className="mt-1 text-sm text-[var(--stitch-on-surface-variant)]">{leak.description}</p>
-                <p className="mt-1 text-xs text-[var(--stitch-on-surface-variant)]">Bron: {leak.source}</p>
+                <p className="mt-1 text-sm text-[var(--stitch-on-surface-variant)]">{finding.description}</p>
+                <p className="mt-1 text-xs text-[var(--stitch-on-surface-variant)]">Bron: {finding.source}</p>
               </div>
             ))}
           </CardContent>

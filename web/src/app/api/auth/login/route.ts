@@ -1,104 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, or, and, isNull } from 'drizzle-orm';
-import { db, users } from '@/db';
-import { verifyPassword } from '@/lib/auth';
-import { setSession } from '@/lib/session';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { createSupabaseRouteClient } from '@/lib/supabase/route';
+import { apiErrorResponse, ApiError } from '@/lib/api-errors';
+
+function copyCookies(from: NextResponse, to: NextResponse): void {
+  for (const cookie of from.cookies.getAll()) to.cookies.set(cookie);
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, username: bodyUsername } = body;
-    const identifier = bodyUsername || email;
+    const identifier = typeof body.identifier === 'string'
+      ? body.identifier.trim()
+      : typeof body.email === 'string'
+        ? body.email.trim()
+        : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (!identifier || !password) throw new ApiError('INVALID_INPUT', 'Email/username and password are required.');
 
-    if (!identifier || !password) {
-      return NextResponse.json(
-        { error: 'Email/username and password are required' },
-        { status: 400 },
-      );
+    let email = identifier.toLowerCase();
+    if (!identifier.includes('@')) {
+      const admin = createSupabaseAdminClient();
+      const { data: profile, error } = await admin.from('profiles').select('email').eq('username', identifier).maybeSingle();
+      if (error || !profile) throw new ApiError('UNAUTHORIZED', 'Invalid email/username or password.', 401);
+      email = profile.email;
     }
 
-    // Query by email OR username (Mendix SignIn parity)
-    const trimmedIdentifier = identifier.trim();
-    const lookupEmail = trimmedIdentifier.toLowerCase();
-    const userList = await db
-      .select()
-      .from(users)
-      .where(
-        and(
-          isNull(users.deletedAt),
-          or(
-            eq(users.email, lookupEmail),
-            eq(users.username, trimmedIdentifier),
-          ),
-        ),
-      )
-      .limit(2);
+    const { supabase, response: cookieResponse } = createSupabaseRouteClient(request);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user) throw new ApiError('UNAUTHORIZED', 'Invalid email/username or password.', 401);
 
-    if (userList.length === 0) {
-      return NextResponse.json(
-        { error: 'Invalid email/username or password' },
-        { status: 401 },
-      );
-    }
+    const admin = createSupabaseAdminClient();
+    const { data: profile } = await admin.from('profiles').select('*').eq('id', data.user.id).maybeSingle();
+    if (!profile) throw new ApiError('UNAUTHORIZED', 'The account profile is not available.', 401);
 
-    // Ambiguity check: if both email and username matched different users, reject
-    if (userList.length > 1) {
-      const emailMatch = userList.find((u) => u.email === lookupEmail);
-      const usernameMatch = userList.find((u) => u.username === trimmedIdentifier);
-      if (emailMatch && usernameMatch && emailMatch.id !== usernameMatch.id) {
-        return NextResponse.json(
-          { error: 'Ambiguous identifier. Please use your email address.' },
-          { status: 409 },
-        );
-      }
-    }
-
-    const user = userList[0];
-
-    if (!user.passwordHash) {
-      return NextResponse.json(
-        { error: 'Invalid email/username or password' },
-        { status: 401 },
-      );
-    }
-
-    const isValid = await verifyPassword(password, user.passwordHash);
-    if (!isValid) {
-      return NextResponse.json(
-        { error: 'Invalid email/username or password' },
-        { status: 401 },
-      );
-    }
-
-    if (!user.isActivated) {
-      return NextResponse.json(
-        { error: 'Account not activated. Please check your email.' },
-        { status: 403 },
-      );
-    }
-
-    const response = NextResponse.json({
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      firstname: user.firstname,
-      lastname: user.lastname,
-      role: user.role,
+    const result = NextResponse.json({
+      id: data.user.id,
+      email: profile.email,
+      username: profile.username,
+      firstname: profile.firstname,
+      lastname: profile.lastname,
+      role: profile.role,
     });
-
-    setSession(response, {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      role: user.role,
-    });
-
-    return response;
+    copyCookies(cookieResponse, result);
+    return result;
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 },
-    );
+    return apiErrorResponse(error);
   }
 }

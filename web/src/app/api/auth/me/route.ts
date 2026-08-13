@@ -1,38 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
-import { db, users } from '@/db';
-import { getSession } from '@/lib/session';
+import { NextResponse } from 'next/server';
+import { apiErrorResponse } from '@/lib/api-errors';
+import { getAuthenticatedContext, mapProfile } from '@/lib/auth/guards';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const session = await getSession(request);
-    if (!session) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const [user] = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        firstname: users.firstname,
-        lastname: users.lastname,
-        company: users.company,
-        role: users.role,
-        isActivated: users.isActivated,
-        performedDomainChecks: users.performedDomainChecks,
-        createdAt: users.createdAt,
-      })
-      .from(users)
-      .where(eq(users.id, session.id))
-      .limit(1);
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    return NextResponse.json(user);
+    const context = await getAuthenticatedContext();
+    if (!context) return NextResponse.json({ error: 'Authentication is required.', code: 'UNAUTHORIZED' }, { status: 401 });
+    return NextResponse.json(mapProfile(context.profile, context.user));
   } catch (error) {
-    console.error('Failed to fetch user profile:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

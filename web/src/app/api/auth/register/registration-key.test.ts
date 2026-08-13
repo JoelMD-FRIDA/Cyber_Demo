@@ -1,188 +1,73 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+// @vitest-environment node
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+
+const mocks = vi.hoisted(() => ({
+  signUp: vi.fn(),
+  deleteUser: vi.fn(),
+  profileLookup: vi.fn(),
+  reserveKey: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({ maybeSingle: mocks.profileLookup }),
+      }),
+    }),
+    rpc: mocks.reserveKey,
+    auth: { admin: { deleteUser: mocks.deleteUser } },
+  }),
+}));
+
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseServerClient: async () => ({ auth: { signUp: mocks.signUp } }),
+}));
+
 import { POST } from "./route";
 
-type SelectResult = Record<string, unknown>;
-
-const selectResultsQueue: SelectResult[][] = [];
-
-vi.mock("@/db", () => ({
-  db: {
-    select: vi.fn(() => {
-      const result = selectResultsQueue.shift() ?? [];
-      return {
-        from: () => ({
-          where: () => ({
-            limit: vi.fn().mockResolvedValue(result),
-          }),
-        }),
-      };
-    }),
-    insert: vi.fn(() => ({
-      values: () => ({
-        returning: vi.fn().mockResolvedValue([{ id: "uid", email: "test@example.com" }]),
-      }),
-    })),
-    update: vi.fn(() => ({
-      set: () => ({
-        where: vi.fn().mockResolvedValue(undefined),
-      }),
-    })),
-  },
-  users: {},
-  activationRequests: {},
-  registrationKeys: {},
-}));
-
-vi.mock("@/lib/auth", () => ({
-  hashPassword: vi.fn().mockResolvedValue("hashed-password"),
-}));
-
-vi.mock("@/lib/email", () => ({
-  sendWithTemplate: vi.fn().mockResolvedValue({ queued: true }),
-}));
-
-function buildRequest(url: string, body: Record<string, unknown>): NextRequest {
-  return new NextRequest(url, {
+function buildRequest(body: Record<string, unknown>): NextRequest {
+  return new NextRequest("http://localhost:3000/api/auth/register", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 }
 
-describe("POST /api/auth/register - key validation", () => {
+const baseBody = { email: "test@example.com", password: "Secure123!", firstname: "Test", lastname: "User" };
+
+describe("POST /api/auth/register - Supabase boundary", () => {
   beforeEach(() => {
-    selectResultsQueue.length = 0;  // mutate in-place so vi.mock closure sees it
+    mocks.signUp.mockReset().mockResolvedValue({ data: { user: { id: "user-1" }, session: null }, error: null });
+    mocks.deleteUser.mockReset().mockResolvedValue({ error: null });
+    mocks.profileLookup.mockReset().mockResolvedValue({ data: null, error: null });
+    mocks.reserveKey.mockReset().mockResolvedValue({ data: { id: "key-1" }, error: null });
   });
 
-  it("registers without registration key when not provided", async () => {
-    selectResultsQueue.push([], []);  // email check, username check (skipped, but queued anyway)
-
-    const res = await POST(buildRequest("http://localhost:3000/api/auth/register", {
-      email: "a@b.com",
-      password: "Secure123!",
-      firstname: "Alice",
-      lastname: "Smith",
-    }));
-
-    expect(res.status).toBe(201);
+  it("creates a Supabase Auth user without a key", async () => {
+    const response = await POST(buildRequest(baseBody));
+    expect(response.status).toBe(201);
+    expect(mocks.signUp).toHaveBeenCalledWith(expect.objectContaining({ email: baseBody.email, password: baseBody.password }));
+    expect(mocks.reserveKey).not.toHaveBeenCalled();
   });
 
-  it("accepts valid registration key and increments usedCount", async () => {
-    const validKey = {
-      code: "KEY-001",
-      enabled: true,
-      usedCount: 0,
-      totalSlots: 10,
-      expiresAt: null,
-      company: "Acme",
-      companyDomain: "acme.com",
-    };
-
-    selectResultsQueue.push([], [validKey]);  // email check, key lookup
-
-    const res = await POST(buildRequest("http://localhost:3000/api/auth/register", {
-      email: "b@c.com",
-      password: "Secure123!",
-      firstname: "Bob",
-      lastname: "Jones",
-      registrationCode: "KEY-001",
-    }));
-
-    expect(res.status).toBe(201);
+  it("atomically reserves a supplied registration key", async () => {
+    const response = await POST(buildRequest({ ...baseBody, registrationCode: "KEY-001" }));
+    expect(response.status).toBe(201);
+    expect(mocks.reserveKey).toHaveBeenCalledWith("reserve_registration_key", { p_code: "KEY-001" });
   });
 
-  it("rejects invalid registration key (not found)", async () => {
-    selectResultsQueue.push([], []);  // email check, key lookup
-
-    const res = await POST(buildRequest("http://localhost:3000/api/auth/register", {
-      email: "c@d.com",
-      password: "Secure123!",
-      firstname: "Carol",
-      lastname: "Davis",
-      registrationCode: "NONEXISTENT",
-    }));
-
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toContain("Invalid registration key");
-  });
-
-  it("rejects expired registration key", async () => {
-    const expiredKey = {
-      code: "EXP-KEY",
-      enabled: true,
-      usedCount: 0,
-      totalSlots: 10,
-      expiresAt: new Date("2020-01-01").toISOString(),
-      company: null,
-      companyDomain: null,
-    };
-
-    selectResultsQueue.push([], [expiredKey]);
-
-    const res = await POST(buildRequest("http://localhost:3000/api/auth/register", {
-      email: "d@e.com",
-      password: "Secure123!",
-      firstname: "Dave",
-      lastname: "Evans",
-      registrationCode: "EXP-KEY",
-    }));
-
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toContain("expired");
-  });
-
-  it("rejects disabled registration key", async () => {
-    const disabledKey = {
-      code: "DIS-KEY",
-      enabled: false,
-      usedCount: 0,
-      totalSlots: 10,
-      expiresAt: null,
-      company: null,
-      companyDomain: null,
-    };
-
-    selectResultsQueue.push([], [disabledKey]);
-
-    const res = await POST(buildRequest("http://localhost:3000/api/auth/register", {
-      email: "e@f.com",
-      password: "Secure123!",
-      firstname: "Eve",
-      lastname: "Fox",
-      registrationCode: "DIS-KEY",
-    }));
-
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toContain("disabled");
-  });
-
-  it("rejects used-up registration key", async () => {
-    const fullKey = {
-      code: "FULL-KEY",
-      enabled: true,
-      usedCount: 10,
-      totalSlots: 10,
-      expiresAt: null,
-      company: null,
-      companyDomain: null,
-    };
-
-    selectResultsQueue.push([], [fullKey]);
-
-    const res = await POST(buildRequest("http://localhost:3000/api/auth/register", {
-      email: "f@g.com",
-      password: "Secure123!",
-      firstname: "Frank",
-      lastname: "Green",
-      registrationCode: "FULL-KEY",
-    }));
-
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toContain("maximum number of uses");
+  it.each([
+    ["REGISTRATION_KEY_NOT_FOUND", "invalid"],
+    ["REGISTRATION_KEY_EXPIRED", "expired"],
+    ["REGISTRATION_KEY_DISABLED", "disabled"],
+    ["REGISTRATION_KEY_EXHAUSTED", "no available slots"],
+  ])("rejects a key when Supabase returns %s", async (code, message) => {
+    mocks.reserveKey.mockResolvedValue({ data: null, error: { message: code } });
+    const response = await POST(buildRequest({ ...baseBody, registrationCode: "KEY-001" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain(message);
+    expect(mocks.deleteUser).toHaveBeenCalledWith("user-1");
   });
 });

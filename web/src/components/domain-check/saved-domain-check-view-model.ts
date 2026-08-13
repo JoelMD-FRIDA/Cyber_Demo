@@ -1,24 +1,35 @@
-import type { StructuredResults } from './wizard-context';
-
-export type SavedView = 'results' | 'report';
+export interface StructuredResults {
+  resultsPWLeaks: number;
+  resultsEmailLeaks: number;
+  resultsEoLSoftware: number;
+  resultsOpenPorts: number;
+  resultsSPFRecord: boolean;
+  hasSPFRecordResult: boolean;
+  hasDarknetResults: boolean;
+  hasSoftwareResults: boolean;
+  hasOpenPortsResults: boolean;
+}
 
 export interface SavedDomainCheck {
   id: string;
   url: string;
-  status: string;
-  providerName: string;
-  categoryName: string;
+  status: 'queued' | 'running' | 'completed' | 'partial' | 'failed' | string;
+  provider: { id: string; key: string; name: string } | null;
+  category: { id: string; key: string; name: string } | null;
   createdAt: string;
+  updatedAt: string;
   remainingChecks: number;
   maxChecks: number;
-  providerCount: number;
-  results: Record<string, unknown>;
-  structuredResults: StructuredResults;
+  attemptCount: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+  rawResult: Record<string, unknown> | null;
+  structuredResult: unknown;
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
-export interface SavedDomainCheckResponse {
-  check: SavedDomainCheck;
-}
+export interface SavedDomainCheckResponse { check: SavedDomainCheck }
 
 export interface Finding {
   type: string;
@@ -27,111 +38,75 @@ export interface Finding {
   source: string;
 }
 
-interface SummaryMetrics {
-  totalChecks: number;
-  passed: number;
-  warnings: number;
-  failed: number;
-}
+interface SummaryMetrics { totalChecks: number; passed: number; warnings: number; failed: number }
 
 export function buildViewModel(check: SavedDomainCheck): {
   summary: SummaryMetrics;
+  structured: StructuredResults;
   hasSpf: boolean;
   spfDetail: string;
   portMeasurementCount: number;
   findings: readonly Finding[];
 } {
-  const summary = getSummary(check.results, check.structuredResults);
-  const spf = getRecord(check.results['spf']);
-  const ports = check.results['ports'];
-  const leaks = check.results['leaks'];
+  const structured = toStructured(check.structuredResult);
+  const raw = check.rawResult ?? {};
+  const spf = getRecord(raw.spf);
+  const ports = getRecord(raw.ports);
+  const leaks = getRecord(raw.leaks);
+  const software = getRecord(raw.software);
+  const warningCount = [structured.resultsPWLeaks, structured.resultsEmailLeaks, structured.resultsEoLSoftware, structured.resultsOpenPorts].filter((value) => value > 0).length;
 
   return {
-    summary,
-    hasSpf: getBoolean(spf?.['hasSpf']) ?? check.structuredResults.resultsSPFRecord,
-    spfDetail: getString(spf?.['spfRecord']) ?? (check.structuredResults.hasSPFRecordResult ? 'SPF-Signale gespeichert' : 'Kein SPF-Eintrag gespeichert'),
-    portMeasurementCount: Array.isArray(ports) ? ports.length : getNumber(getRecord(ports)?.['openPorts']) ?? check.structuredResults.resultsOpenPorts,
-    findings: getFindings(leaks, check.structuredResults),
+    structured,
+    summary: { totalChecks: 4, passed: 4 - warningCount, warnings: warningCount, failed: check.status === 'failed' ? 1 : 0 },
+    hasSpf: getBoolean(spf?.hasSpf) ?? structured.resultsSPFRecord,
+    spfDetail: getString(spf?.spfRecord) ?? (structured.hasSPFRecordResult ? 'SPF signals stored' : 'No SPF record stored'),
+    portMeasurementCount: getNumber(ports?.openPorts) ?? structured.resultsOpenPorts,
+    findings: getFindings(leaks, software, structured),
   };
 }
 
-function getSummary(results: Record<string, unknown>, structured: StructuredResults): SummaryMetrics {
-  const summary = getRecord(results['summary']);
-  if (summary) {
-    return {
-      totalChecks: getNumber(summary['totalChecks']) ?? 4,
-      passed: getNumber(summary['passed']) ?? 0,
-      warnings: getNumber(summary['warnings']) ?? 0,
-      failed: getNumber(summary['failed']) ?? 0,
-    };
-  }
-
-  const warnings = [
-    structured.resultsPWLeaks > 0,
-    structured.resultsEmailLeaks > 0,
-    structured.resultsEoLSoftware > 0,
-    structured.resultsOpenPorts > 0,
-  ].filter(Boolean).length;
-
+function toStructured(value: unknown): StructuredResults {
+  const record = getRecord(value);
   return {
-    totalChecks: 4,
-    passed: 4 - warnings,
-    warnings,
-    failed: 0,
+    resultsPWLeaks: getNumber(record?.resultsPWLeaks) ?? 0,
+    resultsEmailLeaks: getNumber(record?.resultsEmailLeaks) ?? 0,
+    resultsEoLSoftware: getNumber(record?.resultsEoLSoftware) ?? 0,
+    resultsOpenPorts: getNumber(record?.resultsOpenPorts) ?? 0,
+    resultsSPFRecord: getBoolean(record?.resultsSPFRecord) ?? false,
+    hasSPFRecordResult: getBoolean(record?.hasSPFRecordResult) ?? false,
+    hasDarknetResults: getBoolean(record?.hasDarknetResults) ?? false,
+    hasSoftwareResults: getBoolean(record?.hasSoftwareResults) ?? false,
+    hasOpenPortsResults: getBoolean(record?.hasOpenPortsResults) ?? false,
   };
 }
 
-function getFindings(value: unknown, structured: StructuredResults): readonly Finding[] {
-  if (Array.isArray(value)) {
-    return value.map(toFinding).filter(isDefined);
-  }
-
+function getFindings(leaks: Record<string, unknown> | undefined, software: Record<string, unknown> | undefined, structured: StructuredResults): readonly Finding[] {
+  const signals = [...toFindings(leaks?.signals, 'Cysmo'), ...toFindings(software?.signals, 'Cysmo')];
+  if (signals.length > 0) return signals;
   const findings: Finding[] = [];
-  if (structured.resultsPWLeaks > 0) findings.push({ type: 'Passwortlecks', severity: 'high', description: `${structured.resultsPWLeaks} Passwortlecks gefunden.`, source: 'Cysmo' });
-  if (structured.resultsEmailLeaks > 0) findings.push({ type: 'E-Mail-Lecks', severity: 'medium', description: `${structured.resultsEmailLeaks} E-Mail-Lecks gefunden.`, source: 'Cysmo' });
-  if (structured.resultsEoLSoftware > 0) findings.push({ type: 'EOL-Software', severity: 'medium', description: `${structured.resultsEoLSoftware} veraltete Software-Indikatoren gefunden.`, source: 'Cysmo' });
+  if (structured.resultsPWLeaks > 0) findings.push({ type: 'Password leaks', severity: 'high', description: `${structured.resultsPWLeaks} password leaks found.`, source: 'Cysmo' });
+  if (structured.resultsEmailLeaks > 0) findings.push({ type: 'Email leaks', severity: 'medium', description: `${structured.resultsEmailLeaks} email leaks found.`, source: 'Cysmo' });
+  if (structured.resultsEoLSoftware > 0) findings.push({ type: 'End-of-life software', severity: 'medium', description: `${structured.resultsEoLSoftware} outdated software indicators found.`, source: 'Cysmo' });
   return findings;
 }
 
-function toFinding(value: unknown): Finding | undefined {
-  const record = getRecord(value);
-  if (!record) return undefined;
-  const type = getString(record['type']);
-  const description = getString(record['description']);
-  if (!type || !description) return undefined;
-  return {
-    type,
-    severity: getSeverity(record['severity']),
-    description,
-    source: getString(record['source']) ?? 'Domain check',
-  };
+function toFindings(value: unknown, source: string): Finding[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const record = getRecord(item);
+    if (!record) return [];
+    const type = getString(record.nameKey) ?? getString(record.type);
+    const description = getString(record.message) ?? getString(record.text) ?? getString(record.description);
+    if (!type || !description) return [];
+    return [{ type, severity: getSeverity(record.severity), description, source }];
+  });
 }
 
 function getSeverity(value: unknown): Finding['severity'] {
   return value === 'low' || value === 'medium' || value === 'high' || value === 'critical' ? value : 'medium';
 }
-
-function getRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(value)) return undefined;
-  return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function getString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function getNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function getBoolean(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined;
-}
-
-function isDefined<T>(value: T | undefined): value is T {
-  return value !== undefined;
-}
+function getRecord(value: unknown): Record<string, unknown> | undefined { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined; }
+function getString(value: unknown): string | undefined { return typeof value === 'string' && value.length > 0 ? value : undefined; }
+function getNumber(value: unknown): number | undefined { return typeof value === 'number' && Number.isFinite(value) ? value : undefined; }
+function getBoolean(value: unknown): boolean | undefined { return typeof value === 'boolean' ? value : undefined; }

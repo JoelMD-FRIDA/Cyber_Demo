@@ -15,7 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { useState, useEffect } from "react";
+import { useI18n } from "@/lib/i18n";
 
 
 type UserRole = "anonymous" | "user" | "admin";
@@ -39,20 +39,7 @@ export function Header({
 }: HeaderProps) {
   const pathname = usePathname();
   const navItems = userRole ? navigationByRole[userRole]?.[0]?.items ?? [] : [];
-  const [locale, setLocale] = useState<"de" | "en">("de");
-
-  useEffect(() => {
-    const saved = localStorage.getItem("locale") as "de" | "en" | null;
-    if (saved) {
-      setLocale(saved);
-    }
-  }, []);
-
-  const handleLocaleChange = (newLocale: "de" | "en") => {
-    setLocale(newLocale);
-    localStorage.setItem("locale", newLocale);
-    document.documentElement.lang = newLocale;
-  };
+  const { locale, setLocale, t } = useI18n();
 
   return (
     <header className="sticky top-0 z-50 flex h-[var(--stitch-topbar-height)] min-h-[var(--stitch-topbar-height)] w-full items-center border-b border-[var(--stitch-outline-variant)]/70 bg-[var(--stitch-surface-container-lowest)] px-[var(--stitch-space-lg)] text-[var(--stitch-on-surface)] shadow-none">
@@ -90,7 +77,7 @@ export function Header({
                 )}
               >
                 <Icon className="size-4" />
-                {item.title}
+                {t(item.title)}
               </Button>
             </Link>
           );
@@ -99,13 +86,13 @@ export function Header({
 
       <div className="ml-auto flex shrink-0 items-center gap-[var(--frida-space-small)]">
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center justify-center text-[var(--stitch-primary)] hover:bg-[var(--stitch-surface-container)] hover:text-[var(--stitch-on-secondary-fixed-variant)] rounded-[var(--stitch-control-radius)] size-8 transition-all active:scale-[0.98] outline-none focus-visible:ring-3 focus-visible:ring-[var(--stitch-primary)]/25" aria-label="Sprache ändern">
+          <DropdownMenuTrigger className="flex items-center justify-center text-[var(--stitch-primary)] hover:bg-[var(--stitch-surface-container)] hover:text-[var(--stitch-on-secondary-fixed-variant)] rounded-[var(--stitch-control-radius)] size-8 transition-all active:scale-[0.98] outline-none focus-visible:ring-3 focus-visible:ring-[var(--stitch-primary)]/25" aria-label={t('nav.changeLanguage')}>
             <GlobeIcon className="size-4" />
             <ChevronDownIcon className="size-3 ml-1" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-[80px] p-1">
             <DropdownMenuItem
-              onClick={() => handleLocaleChange("de")}
+              onClick={() => setLocale("de")}
               className={cn(
                 "data-[state=checked]:bg-[var(--stitch-primary)] data-[state=checked]:text-white",
                 locale === "de" && "bg-[var(--stitch-primary)] text-white"
@@ -115,7 +102,7 @@ export function Header({
               DE
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => handleLocaleChange("en")}
+              onClick={() => setLocale("en")}
               className={cn(
                 "data-[state=checked]:bg-[var(--stitch-primary)] data-[state=checked]:text-white",
                 locale === "en" && "bg-[var(--stitch-primary)] text-white"
@@ -133,7 +120,7 @@ export function Header({
             size="icon"
             onClick={onToggleDark}
             className="text-[var(--stitch-primary)] hover:bg-[var(--stitch-surface-container)] hover:text-[var(--stitch-on-secondary-fixed-variant)]"
-            aria-label="Toggle dark mode"
+            aria-label={t('common.darkMode')}
           >
             {isDark ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
           </Button>
@@ -153,7 +140,7 @@ export function Header({
               size="icon"
               onClick={onLogout}
               className="text-[var(--stitch-on-surface-variant)] hover:bg-[var(--stitch-surface-container)] hover:text-[var(--stitch-primary)]"
-              aria-label="Logout"
+              aria-label={t('nav.logout')}
             >
               <LogOutIcon className="size-4" />
             </Button>

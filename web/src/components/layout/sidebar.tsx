@@ -16,6 +16,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { navigationByRole } from "@/config/navigation";
+import { useI18n } from "@/lib/i18n";
 
 type UserRole = "anonymous" | "user" | "admin";
 
@@ -25,8 +26,9 @@ interface AppSidebarProps {
 
 export function AppSidebar({ userRole = null }: AppSidebarProps) {
   const pathname = usePathname();
+  const { t } = useI18n();
   const navGroups = userRole === "admin"
-    ? (navigationByRole.admin ?? []).filter((group) => group.label === "Admin")
+    ? (navigationByRole.admin ?? []).filter((group) => group.label === "nav.admin")
     : [];
 
   return (
@@ -45,9 +47,9 @@ export function AppSidebar({ userRole = null }: AppSidebarProps) {
             unoptimized
           />
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-            <span className="text-[16px] font-semibold leading-6 text-[var(--stitch-primary)]">Admin Console</span>
+            <span className="text-[16px] font-semibold leading-6 text-[var(--stitch-primary)]">{t('nav.console')}</span>
             <span className="text-[11px] font-semibold leading-4 text-[var(--stitch-on-surface-variant)]">
-              Cybersecurity Oversight
+              {t('nav.consoleSubtitle')}
             </span>
           </div>
         </div>
@@ -58,7 +60,7 @@ export function AppSidebar({ userRole = null }: AppSidebarProps) {
           <SidebarGroup key={groupIndex} className="px-[var(--frida-space-small)] py-[var(--frida-space-small)]">
             {group.label && (
               <SidebarGroupLabel className="h-auto px-[var(--frida-space-small)] pb-[var(--frida-space-small)] pt-0 text-xs font-bold uppercase tracking-wide text-[var(--stitch-on-surface-variant)]">
-                {group.label}
+                {t(group.label)}
               </SidebarGroupLabel>
             )}
             <SidebarGroupContent>
@@ -70,13 +72,13 @@ export function AppSidebar({ userRole = null }: AppSidebarProps) {
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
                         isActive={isActive}
-                        tooltip={item.title}
+                        tooltip={t(item.title)}
                         className="h-10 rounded-[var(--stitch-control-radius)] border-l-4 border-transparent px-[var(--stitch-space-md)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--stitch-on-surface-variant)] transition-colors hover:bg-[var(--stitch-surface-container)] hover:text-[var(--stitch-primary)] data-active:border-[var(--stitch-primary)] data-active:bg-[var(--stitch-surface-container)] data-active:text-[var(--stitch-primary)] group-data-[collapsible=icon]:size-[var(--frida-sidebar-width-collapsed)]! group-data-[collapsible=icon]:p-0! [&_svg]:size-5"
                       >
                         <Link href={item.href} prefetch={false} className="flex h-full min-w-0 flex-1 items-center gap-[var(--frida-space-small)] group-data-[collapsible=icon]:justify-center">
                           <Icon className="size-4" />
                           <span className="truncate group-data-[collapsible=icon]:hidden">
-                            {item.title}
+                            {t(item.title)}
                           </span>
                         </Link>
                       </SidebarMenuButton>

@@ -1,24 +1,24 @@
 import { test, expect } from "./fixtures";
-
-const EVIDENCE_DIR = "../.sisyphus/evidence";
+import { hasAdminE2EConfig } from "./config";
 
 test.describe("Admin registration key management", () => {
+  test.skip(!hasAdminE2EConfig, "Configure a dedicated Supabase test project for admin E2E tests.");
   test("Admin creates a registration key and it appears in the list", async ({ adminPage }) => {
     // Navigate to admin registration keys page
     await adminPage.goto("/admin/registration-keys");
-    await expect(adminPage.getByText("Registration Keys")).toBeVisible();
+    await expect(adminPage.getByText(/Registrierungsschlüssel|Registration keys/i).first()).toBeVisible();
 
-    // Click Create Key button
-    await adminPage.getByRole("button", { name: "Create Key" }).click();
+    // Click the add-key button (the UI follows the selected locale).
+    await adminPage.getByRole("button", { name: /add|hinzufügen/i }).click();
 
     // Fill in the create dialog
     await adminPage.getByLabel("Code").fill("TEST-KEY-001");
-    await adminPage.getByLabel("Total Slots").fill("5");
-    await adminPage.getByLabel("Company").fill("TestCorp");
-    await adminPage.getByLabel("Company Domain").fill("testcorp.com");
+    await adminPage.getByLabel(/Nutzung|Usage/i).fill("5");
+    await adminPage.getByLabel(/Unternehmen|Company/i).fill("TestCorp");
+    await adminPage.getByLabel(/Unternehmensdomain|Company domain/i).fill("testcorp.com");
 
     // Submit
-    await adminPage.getByRole("button", { name: "Create" }).click();
+    await adminPage.getByRole("button", { name: /hinzufügen|add/i }).last().click();
 
     // Wait for the dialog to close and list to refresh
     await adminPage.waitForTimeout(1000);
@@ -29,32 +29,22 @@ test.describe("Admin registration key management", () => {
     await expect(adminPage.getByText("testcorp.com")).toBeVisible();
     await expect(adminPage.getByText("0 / 5")).toBeVisible();
 
-    // Screenshot for evidence
-    await adminPage.screenshot({
-      path: `${EVIDENCE_DIR}/task-admin-create-registration-key.png`,
-      fullPage: true,
-    });
   });
 
   test("Admin can create key with expiry and see status", async ({ adminPage }) => {
     await adminPage.goto("/admin/registration-keys");
-    await expect(adminPage.getByText("Registration Keys")).toBeVisible();
+    await expect(adminPage.getByText(/Registration Keys|Registrierungsschlüssel/i)).toBeVisible();
 
-    await adminPage.getByRole("button", { name: "Create Key" }).click();
+    await adminPage.getByRole("button", { name: /add|hinzufügen/i }).click();
     await adminPage.getByLabel("Code").fill("EXPIRING-KEY");
-    await adminPage.getByLabel("Total Slots").fill("1");
-    await adminPage.getByLabel("Expires At").fill("2099-12-31");
+    await adminPage.getByLabel(/Nutzung|Usage/i).fill("1");
+    await adminPage.getByLabel(/läuft ab|expires/i).fill("2099-12-31");
 
-    await adminPage.getByRole("button", { name: "Create" }).click();
+    await adminPage.getByRole("button", { name: /hinzufügen|add/i }).last().click();
     await adminPage.waitForTimeout(1000);
 
     await expect(adminPage.getByText("EXPIRING-KEY")).toBeVisible();
 
-    // Screenshot for evidence
-    await adminPage.screenshot({
-      path: `${EVIDENCE_DIR}/task-admin-create-key-with-expiry.png`,
-      fullPage: true,
-    });
   });
 
   test("Non-admin user is blocked from /admin/registration-keys", async ({ authenticatedPage }) => {

@@ -1,9 +1,11 @@
 import { test, expect } from "./fixtures";
+import { hasAdminE2EConfig, hasSupabaseE2EConfig, hasUserE2EConfig } from "./config";
 
 test.describe("Home page — anonymous visitor", () => {
+  test.skip(!hasSupabaseE2EConfig, "Configure a dedicated Supabase test project for browser E2E tests.");
   test("home page loads and shows frida logo", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByAltText("FRIDA Logo")).toBeVisible();
+    await expect(page.getByAltText("FRIDA").first()).toBeVisible();
     await expect(
       page.getByText("Domain-Sicherheit auf einem neuen Level"),
     ).toBeVisible();
@@ -21,10 +23,10 @@ test.describe("Home page — anonymous visitor", () => {
 
   test("home page shows feature cards", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("Domain-Recherche")).toBeVisible();
+    await expect(page.getByText("Funktionen")).toBeVisible();
     await expect(page.getByText("Sicherheitsprüfung")).toBeVisible();
-    await expect(page.getByText("Berichte & Analysen")).toBeVisible();
-    await expect(page.getByText("Multi-Provider")).toBeVisible();
+    await expect(page.getByText("Berichte und Analysen")).toBeVisible();
+    await expect(page.getByText("Anbieter")).toBeVisible();
   });
 
   test("home page shows how-it-works section", async ({ page }) => {
@@ -49,23 +51,21 @@ test.describe("Home page — anonymous visitor", () => {
   test("anonymous navigation shows login and register", async ({ page }) => {
     await page.goto("/");
     await expect(
-      page.getByRole("link", { name: /log in|login/i }).first(),
+      page.getByRole("link", { name: /anmelden|sign in/i }).first(),
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /register/i }).first(),
+      page.getByRole("link", { name: /registrieren|register/i }).first(),
     ).toBeVisible();
   });
 });
 
 test.describe("Home page — authenticated user", () => {
+  test.skip(!hasUserE2EConfig, "Configure a dedicated Supabase test project for authenticated E2E tests.");
   test("shows welcome message and domain-check link", async ({
     authenticatedPage,
   }) => {
     await authenticatedPage.goto("/");
-    await expect(authenticatedPage.getByText("Willkommen")).toBeVisible();
-    await expect(
-      authenticatedPage.getByText("Domain-Check"),
-    ).toBeVisible();
+    await expect(authenticatedPage.getByRole("button", { name: /prüfung starten|start check/i })).toBeVisible();
     await expect(
       authenticatedPage.getByRole("link", { name: /domain-check/i }),
     ).toBeVisible();
@@ -80,17 +80,17 @@ test.describe("Home page — authenticated user", () => {
 });
 
 test.describe("Home page — admin", () => {
-  test("shows welcome message and admin link", async ({ adminPage }) => {
+  test.skip(!hasAdminE2EConfig, "Configure a dedicated Supabase test project for admin E2E tests.");
+  test("shows operational admin navigation", async ({ adminPage }) => {
     await adminPage.goto("/");
-    await expect(adminPage.getByText("Willkommen")).toBeVisible();
     await expect(
       adminPage.getByText("Administration"),
     ).toBeVisible();
   });
 
-  test("admin sees system quick-info", async ({ adminPage }) => {
+  test("admin does not see removed legacy navigation", async ({ adminPage }) => {
     await adminPage.goto("/");
-    await expect(adminPage.getByText("Quick-Info")).toBeVisible();
-    await expect(adminPage.getByText("Über FRIDA Domain Check")).toBeVisible();
+    await expect(adminPage.getByRole("link", { name: /dashboard/i })).toBeVisible();
+    await expect(adminPage.getByText(/API Credentials|E-Mail-Konten|PGP|Master Data|Scheduled Jobs/i)).not.toBeVisible();
   });
 });

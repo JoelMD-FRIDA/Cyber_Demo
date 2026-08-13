@@ -1,7 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const hasSupabaseTestConfig = Boolean(
+  process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+);
+
 export default defineConfig({
   testDir: "./e2e",
+  // macOS may create AppleDouble resource-fork files on the mounted workspace.
+  // They are metadata, not Playwright tests, and must never be parsed as specs.
+  testIgnore: /(^|[\\/])\._/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -65,10 +72,12 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: "npm run start",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
+  ...(hasSupabaseTestConfig ? {
+    webServer: {
+      command: "npm run start",
+      url: "http://localhost:3000",
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+    },
+  } : {}),
 });

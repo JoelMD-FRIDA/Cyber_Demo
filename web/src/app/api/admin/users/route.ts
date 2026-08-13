@@ -1,147 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, users } from '@/db';
-import { eq, ilike, count, and, isNull } from 'drizzle-orm';
-import { getSession } from '@/lib/session';
-import { Role } from '@/lib/rbac';
-import { hashPassword } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth/guards';
+import { apiErrorResponse, ApiError } from '@/lib/api-errors';
 
-function sanitizeUser(user: typeof users.$inferSelect) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { passwordHash, ...sanitized } = user;
-  return sanitized;
-}
-
-async function requireAdmin(request: NextRequest) {
-  const session = await getSession(request);
-  if (!session) {
-    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  }
-  if (session.role !== Role.ADMIN) {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { session };
+function mapUser(profile: Record<string, unknown>) {
+  return {
+    id: profile.id,
+    email: profile.email,
+    username: profile.username,
+    firstname: profile.firstname,
+    lastname: profile.lastname,
+    company: profile.company,
+    role: profile.role,
+    performedDomainChecks: profile.performed_domain_checks,
+    createdAt: profile.created_at,
+    updatedAt: profile.updated_at,
+  };
 }
 
 export async function GET(request: NextRequest) {
-  const adminCheck = await requireAdmin(request);
-  if (adminCheck.error) return adminCheck.error;
-
-  const searchParams = request.nextUrl.searchParams;
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '10', 10)));
-  const search = searchParams.get('search') || '';
-  const offset = (page - 1) * limit;
-
-  const whereClause = and(
-    isNull(users.deletedAt),
-    search
-      ? ilike(users.email, `%${search}%`)
-      : undefined,
-  );
-
-  const [{ total }] = await db
-    .select({ total: count() })
-    .from(users)
-    .where(whereClause);
-
-  const userList = await db
-    .select()
-    .from(users)
-    .where(whereClause)
-    .limit(limit)
-    .offset(offset)
-    .orderBy(users.createdAt);
-
-  const totalPages = Math.ceil(total / limit);
-
-  return NextResponse.json({
-    users: userList.map(sanitizeUser),
-    total,
-    page,
-    limit,
-    totalPages,
-  });
+  try {
+    const { admin } = await requireAdmin();
+    const page = Math.max(1, Number.parseInt(request.nextUrl.searchParams.get('page') ?? '1', 10));
+    const limit = Math.min(100, Math.max(1, Number.parseInt(request.nextUrl.searchParams.get('limit') ?? '10', 10)));
+    const search = request.nextUrl.searchParams.get('search')?.trim();
+    const from = (page - 1) * limit;
+    let query = admin.from('profiles').select('*', { count: 'exact' }).order('created_at').range(from, from + limit - 1);
+    if (search) query = query.ilike('email', `%${search}%`);
+    const { data, count, error } = await query;
+    if (error) throw new Error(error.message);
+    const total = count ?? 0;
+    return NextResponse.json({ users: (data ?? []).map((user) => mapUser(user as unknown as Record<string, unknown>)), total, page, limit, totalPages: Math.ceil(total / limit) });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const adminCheck = await requireAdmin(request);
-  if (adminCheck.error) return adminCheck.error;
+  try {
+    const { admin } = await requireAdmin();
+    const body = await request.json();
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (!email || !password) throw new ApiError('INVALID_INPUT', 'Email and password are required.');
+    if (!['admin', 'user'].includes(body.role ?? 'user')) throw new ApiError('INVALID_INPUT', 'Role must be admin or user.');
 
-  const body = await request.json();
-  const { email, password, firstname, lastname, role, company, username } = body;
+    const { data: created, error: createError } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        firstname: body.firstname || null,
+        lastname: body.lastname || null,
+        username: typeof body.username === 'string' && body.username.trim() ? body.username.trim().toLowerCase() : null,
+        company: body.company || null,
+      },
+    });
+    if (createError || !created.user) throw new ApiError(createError?.code === 'email_exists' ? 'CONFLICT' : 'INVALID_INPUT', createError?.message ?? 'Unable to create the user.', createError?.code === 'email_exists' ? 409 : 400);
 
-  if (!email || !password) {
-    return NextResponse.json(
-      { error: 'email and password are required' },
-      { status: 400 },
-    );
+    const { data: profile, error: profileError } = await admin
+      .from('profiles')
+      .update({ role: body.role ?? 'user' })
+      .eq('id', created.user.id)
+      .select('*')
+      .single();
+    if (profileError || !profile) throw new Error(profileError?.message ?? 'Unable to create the user profile.');
+    return NextResponse.json({ user: mapUser(profile as unknown as Record<string, unknown>) }, { status: 201 });
+  } catch (error) {
+    return apiErrorResponse(error);
   }
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return NextResponse.json(
-      { error: 'Invalid email format' },
-      { status: 400 },
-    );
-  }
-
-  const validRoles = [Role.ADMIN, Role.USER];
-  const userRole = role || Role.USER;
-  if (!validRoles.includes(userRole)) {
-    return NextResponse.json(
-      { error: 'Invalid role. Must be "admin" or "user"' },
-      { status: 400 },
-    );
-  }
-
-  const trimmedEmail = email.toLowerCase().trim();
-  const trimmedUsername = username?.trim() || null;
-
-  // Check duplicate email
-  const existingEmail = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, trimmedEmail))
-    .limit(1);
-
-  if (existingEmail.length > 0) {
-    return NextResponse.json(
-      { error: 'Email already exists' },
-      { status: 409 },
-    );
-  }
-
-  // Check duplicate username (if provided)
-  if (trimmedUsername) {
-    const existingUsername = await db
-      .select()
-      .from(users)
-      .where(eq(users.username, trimmedUsername))
-      .limit(1);
-
-    if (existingUsername.length > 0) {
-      return NextResponse.json(
-        { error: 'Username already exists' },
-        { status: 409 },
-      );
-    }
-  }
-
-  const passwordHash = await hashPassword(password);
-
-  const [newUser] = await db
-    .insert(users)
-    .values({
-      email: trimmedEmail,
-      username: trimmedUsername,
-      passwordHash,
-      firstname: firstname || null,
-      lastname: lastname || null,
-      role: userRole,
-      company: company || null,
-      isActivated: body.isActivated !== undefined ? body.isActivated : true,
-    })
-    .returning();
-
-  return NextResponse.json({ user: sanitizeUser(newUser) }, { status: 201 });
 }

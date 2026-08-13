@@ -1,172 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { db, users, activationRequests, registrationKeys } from '@/db';
-import { eq, sql } from 'drizzle-orm';
-import { hashPassword } from '@/lib/auth';
-import { sendWithTemplate } from '@/lib/email';
-import { getPublicBaseUrl, isSmtpConfiguredFromEnv } from '@/lib/runtime-env';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { ApiError, apiErrorResponse, type ApiErrorCode } from '@/lib/api-errors';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, firstname, lastname, company, username, registrationCode } = body;
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const firstname = typeof body.firstname === 'string' ? body.firstname.trim() : '';
+    const lastname = typeof body.lastname === 'string' ? body.lastname.trim() : '';
+    const username = typeof body.username === 'string' && body.username.trim() ? body.username.trim().toLowerCase() : null;
+    const company = typeof body.company === 'string' && body.company.trim() ? body.company.trim() : null;
+    const registrationCode = typeof body.registrationCode === 'string' && body.registrationCode.trim()
+      ? body.registrationCode.trim()
+      : null;
 
     if (!email || !password || !firstname || !lastname) {
-      return NextResponse.json(
-        { error: 'Email, password, firstname, and lastname are required' },
-        { status: 400 },
-      );
+      throw new ApiError('INVALID_INPUT', 'Email, password, first name, and last name are required.');
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      throw new ApiError('INVALID_INPUT', 'A valid email address is required.');
+    }
+    if (password.length < 8) {
+      throw new ApiError('INVALID_INPUT', 'Password must be at least 8 characters long.');
     }
 
-    const trimmedEmail = email.toLowerCase().trim();
-    const trimmedUsername = username?.trim() || null;
-
-    // Check duplicate email
-    const existingEmail = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, trimmedEmail))
-      .limit(1);
-
-    if (existingEmail.length > 0) {
-      return NextResponse.json(
-        { error: 'An account with this email already exists' },
-        { status: 409 },
-      );
+    const admin = createSupabaseAdminClient();
+    const { data: existingEmail } = await admin.from('profiles').select('id').eq('email', email).maybeSingle();
+    if (existingEmail) throw new ApiError('CONFLICT', 'An account with this email already exists.', 409);
+    if (username) {
+      const { data: existingUsername } = await admin.from('profiles').select('id').eq('username', username).maybeSingle();
+      if (existingUsername) throw new ApiError('CONFLICT', 'This username is already taken.', 409);
     }
 
-    // Check duplicate username (if provided)
-    if (trimmedUsername) {
-      const existingUsername = await db
-        .select()
-        .from(users)
-        .where(eq(users.username, trimmedUsername))
-        .limit(1);
-
-      if (existingUsername.length > 0) {
-        return NextResponse.json(
-          { error: 'This username is already taken' },
-          { status: 409 },
-        );
-      }
-    }
-
-    // Validate registration key if provided
-    let resolvedCompany = company || null;
-    if (registrationCode) {
-      const keyRecord = await db
-        .select()
-        .from(registrationKeys)
-        .where(eq(registrationKeys.code, registrationCode))
-        .limit(1);
-
-      if (keyRecord.length === 0) {
-        return NextResponse.json(
-          { error: 'Invalid registration key. Please check your key and try again.' },
-          { status: 400 },
-        );
-      }
-
-      const key = keyRecord[0];
-
-      // Check if key is expired
-      if (key.expiresAt && new Date(key.expiresAt) < new Date()) {
-        return NextResponse.json(
-          { error: 'This registration key has expired. Please contact your administrator.' },
-          { status: 400 },
-        );
-      }
-
-      // Check if key is enabled
-      if (!key.enabled) {
-        return NextResponse.json(
-          { error: 'This registration key has been disabled. Please contact your administrator.' },
-          { status: 400 },
-        );
-      }
-
-      // Check if key has available slots
-      if (key.usedCount >= key.totalSlots) {
-        return NextResponse.json(
-          { error: 'This registration key has reached its maximum number of uses. Please contact your administrator.' },
-          { status: 400 },
-        );
-      }
-
-      // Resolve company from key if not provided
-      if (!resolvedCompany && key.company) {
-        resolvedCompany = key.company;
-      }
-    }
-
-    const passwordHash = await hashPassword(password);
-    const fullname = `${firstname} ${lastname}`;
-
-    const smtpConfigured = isSmtpConfiguredFromEnv();
-    const [newUser] = await db
-      .insert(users)
-      .values({
-        email: email.toLowerCase().trim(),
-        username: trimmedUsername,
-        passwordHash,
-        firstname,
-        lastname,
-        company: resolvedCompany,
-        isActivated: !smtpConfigured,
-        role: 'user',
-      })
-      .returning();
-
-    // Increment usedCount if registration key was provided
-    if (registrationCode) {
-      await db
-        .update(registrationKeys)
-        .set({ usedCount: sql`${registrationKeys.usedCount} + 1` })
-        .where(eq(registrationKeys.code, registrationCode));
-    }
-
-    if (smtpConfigured) {
-      const activationToken = crypto.randomUUID();
-      const baseUrl = getPublicBaseUrl();
-      const confirmationLink = `${baseUrl}/activate/${activationToken}`;
-
-      await db.insert(activationRequests).values({
-        uuid: activationToken,
-        fullname,
-        email: newUser.email,
-        confirmationLink,
-      });
-
-      try {
-        const result = await sendWithTemplate(
-          newUser.email,
-          'registration',
-          {
-            username: fullname,
-            confirmationLink,
-          },
-          'de',
-        );
-        if (result.queued) {
-          console.warn('Registration email queued for later delivery');
-        }
-      } catch (e) {
-        console.warn('Registration email sending failed:', e instanceof Error ? e.message : e);
-      }
-    }
-
-    return NextResponse.json(
-      {
-        message: 'Registration successful. Please check your email to activate your account.',
-        userId: newUser.id,
+    const supabase = await createSupabaseServerClient();
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { firstname, lastname, username, company },
       },
-      { status: 201 },
-    );
+    });
+    if (signUpError || !signUpData.user) {
+      throw new ApiError('INVALID_INPUT', signUpError?.message ?? 'Unable to create the account.', 400);
+    }
+
+    try {
+      if (registrationCode) {
+        const { error: keyError } = await admin.rpc('reserve_registration_key', { p_code: registrationCode });
+        if (keyError) throw new Error(keyError.message);
+      }
+    } catch (error) {
+      await admin.auth.admin.deleteUser(signUpData.user.id);
+      const code = error instanceof Error ? error.message.trim() : '';
+      const keyMessages: Record<string, [ApiErrorCode, string]> = {
+        REGISTRATION_KEY_NOT_FOUND: ['REGISTRATION_KEY_NOT_FOUND', 'The registration key is invalid.'],
+        REGISTRATION_KEY_DISABLED: ['REGISTRATION_KEY_DISABLED', 'The registration key is disabled.'],
+        REGISTRATION_KEY_EXPIRED: ['REGISTRATION_KEY_EXPIRED', 'The registration key has expired.'],
+        REGISTRATION_KEY_EXHAUSTED: ['REGISTRATION_KEY_EXHAUSTED', 'The registration key has no available slots.'],
+      };
+      const [keyCode, message] = keyMessages[code] ?? ['INVALID_INPUT', 'The registration key is invalid.'];
+      throw new ApiError(keyCode, message, 400);
+    }
+
+    return NextResponse.json({
+      message: signUpData.session
+        ? 'Registration successful. You can now sign in.'
+        : 'Registration successful. Please check your email to confirm your account.',
+      confirmationRequired: !signUpData.session,
+    }, { status: 201 });
   } catch (error) {
-    console.error('Registration error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 },
-    );
+    return apiErrorResponse(error);
   }
 }

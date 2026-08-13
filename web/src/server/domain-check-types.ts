@@ -1,24 +1,8 @@
-export interface OAuthTokenResponse {
-  access_token: string;
-  expires_in: number;
-  refresh_expires_in?: number;
-  token_type: string;
-  scope?: string;
-}
-
 export interface DomainCheckResult {
   spf: Record<string, unknown>;
   ports: Record<string, unknown>;
   leaks: Record<string, unknown>;
   [key: string]: unknown;
-}
-
-export interface CheckDomainOptions {
-  userId: string;
-  providerId?: string;
-  categoryId?: string;
-  hasAcceptedDisclaimer?: boolean;
-  disclaimerVersion?: string;
 }
 
 export interface StructuredDomainCheckResult {
@@ -82,38 +66,9 @@ export interface CysmoBasicReport {
   readonly [key: string]: unknown;
 }
 
-export interface CysmoCompanyResponse {
-  readonly id?: string;
-  readonly name?: string;
-  readonly domains?: readonly string[];
-  readonly reports?: readonly CysmoBasicReport[];
-  readonly [key: string]: unknown;
-}
-
 export interface CysmoDetailedReport extends CysmoBasicReport {
   readonly partialRatings?: readonly CysmoPartialRating[];
   readonly entrypoints?: CysmoEntrypointsDto;
   readonly numberOfServers?: number;
   readonly managementSummaryData?: unknown;
-}
-
-export interface CysmoDomainCheckApiResponse {
-  readonly domain?: string;
-  readonly status: 'finished' | 'partial';
-  readonly company?: CysmoCompanyResponse;
-  readonly report?: CysmoDetailedReport | CysmoBasicReport;
-  readonly createResponse?: unknown;
-  readonly unacknowledgedSubdomains?: readonly string[];
-  readonly [key: string]: unknown;
-}
-
-export interface CheckDomainResponse {
-  checkId: string;
-  url: string;
-  status: string;
-  remainingChecks: number;
-  maxChecks: number;
-  providerCount: number;
-  results: Record<string, unknown>;
-  structuredResults: StructuredDomainCheckResult;
 }

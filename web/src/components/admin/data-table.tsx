@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 export type Column<T> = {
   key: string;
@@ -35,11 +36,12 @@ export function DataTable<T>({
   data,
   keyExtractor,
   loading = false,
-  emptyMessage = "No items found.",
+  emptyMessage,
   page,
   totalPages,
   onPageChange,
 }: DataTableProps<T>) {
+  const { t } = useI18n();
   if (loading) {
     return (
       <div className="mx-admin-table-card space-y-3 p-4">
@@ -55,7 +57,7 @@ export function DataTable<T>({
   if (data.length === 0) {
     return (
       <div className="mx-admin-empty-state">
-        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+        <p className="text-sm text-muted-foreground">{emptyMessage ?? t("common.noResults")}</p>
       </div>
     );
   }
@@ -88,7 +90,7 @@ export function DataTable<T>({
       {page !== undefined && totalPages !== undefined && totalPages > 1 && (
         <div className="flex items-center justify-between border-t px-4 py-3">
           <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages}
+            {t("common.page")} {page} / {totalPages}
           </p>
           <div className="flex items-center gap-1">
             <Button
@@ -98,7 +100,7 @@ export function DataTable<T>({
               onClick={() => onPageChange?.(page - 1)}
             >
               <ChevronLeftIcon className="size-3.5" />
-              <span className="sr-only">Previous</span>
+              <span className="sr-only">{t("common.previous")}</span>
             </Button>
             <Button
               variant="outline"
@@ -107,7 +109,7 @@ export function DataTable<T>({
               onClick={() => onPageChange?.(page + 1)}
             >
               <ChevronRightIcon className="size-3.5" />
-              <span className="sr-only">Next</span>
+              <span className="sr-only">{t("common.next")}</span>
             </Button>
           </div>
         </div>

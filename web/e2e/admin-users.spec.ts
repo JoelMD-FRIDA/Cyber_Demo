@@ -1,28 +1,26 @@
-import fs from "fs";
-import path from "path";
 import { test, expect } from "./fixtures";
-
-const EVIDENCE_DIR = "../.sisyphus/evidence";
+import { hasAdminE2EConfig } from "./config";
 
 test.describe("Admin user management", () => {
+  test.skip(!hasAdminE2EConfig, "Configure a dedicated Supabase test project for admin E2E tests.");
   test("Admin creates a user with username and it appears in the list", async ({ adminPage }) => {
     // Navigate to admin users page
     await adminPage.goto("/admin/users");
-    await expect(adminPage.getByText("Users")).toBeVisible();
+    await expect(adminPage.getByText(/Benutzer|Users/).first()).toBeVisible();
 
-    // Click Create User button
-    await adminPage.getByRole("button", { name: "Create User" }).click();
+    // Click the add-user button (the UI follows the selected locale).
+    await adminPage.getByRole("button", { name: /add|hinzufügen/i }).click();
 
     // Fill in the create user dialog
-    await adminPage.getByLabel("First Name").fill("Parity");
-    await adminPage.getByLabel("Last Name").fill("User");
-    await adminPage.getByLabel("Username").fill("parityuser");
-    await adminPage.getByLabel("Email").fill("parityuser@example.com");
-    await adminPage.getByLabel("Password").fill("Test1234!");
-    await adminPage.getByLabel("Role").selectOption("user");
+    await adminPage.getByLabel(/Vorname|First name/i).fill("Parity");
+    await adminPage.getByLabel(/Nachname|Last name/i).fill("User");
+    await adminPage.getByLabel(/Benutzername|Username/i).fill("parityuser");
+    await adminPage.getByLabel(/E-Mail-Adresse|Email address/i).fill("parityuser@example.com");
+    await adminPage.getByLabel(/Passwort|Password/i).fill("Test1234!");
+    await adminPage.getByLabel(/Rolle|Role/i).selectOption("user");
 
     // Submit
-    await adminPage.getByRole("button", { name: "Create" }).click();
+    await adminPage.getByRole("button", { name: /hinzufügen|add/i }).last().click();
 
     // Wait for the dialog to close and list to refresh
     await adminPage.waitForTimeout(1000);
@@ -32,11 +30,6 @@ test.describe("Admin user management", () => {
     await expect(adminPage.getByText("parityuser")).toBeVisible();
     await expect(adminPage.getByText("Parity User")).toBeVisible();
 
-    // Take screenshot for evidence
-    await adminPage.screenshot({
-      path: `${EVIDENCE_DIR}/task-6-admin-create-user.png`,
-      fullPage: true,
-    });
   });
 
   test("Non-admin user is blocked from /admin/users", async ({ authenticatedPage }) => {
@@ -61,24 +54,5 @@ test.describe("Admin user management", () => {
 
     expect(apiResponse.status()).toBe(403);
 
-    // Capture API response as JSON evidence
-    const responseBody = await apiResponse.json();
-    const evidencePath = path.resolve(process.cwd(), `${EVIDENCE_DIR}/task-6-nonadmin-blocked.json`);
-    fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
-    fs.writeFileSync(
-      evidencePath,
-      JSON.stringify(
-        {
-          scenario: "Non-admin blocked from user creation",
-          method: "POST",
-          endpoint: "/api/admin/users",
-          status: apiResponse.status(),
-          response: responseBody,
-          timestamp: new Date().toISOString(),
-        },
-        null,
-        2,
-      ),
-    );
   });
 });

@@ -1,21 +1,19 @@
-import fs from "fs";
-import path from "path";
 import { test, expect } from "./fixtures";
-
-const EVIDENCE_DIR = "../.sisyphus/evidence";
+import { hasAdminE2EConfig, hasUserE2EConfig } from "./config";
 
 test.describe("Registration key flow", () => {
+  test.skip(!hasAdminE2EConfig || !hasUserE2EConfig, "Configure a dedicated Supabase test project with regular and admin users for E2E tests.");
   test("Admin creates a registration key usable by new users", async ({ adminPage, page }) => {
     // Admin creates a registration key
     await adminPage.goto("/admin/registration-keys");
-    await expect(adminPage.getByText("Registration Keys")).toBeVisible();
+    await expect(adminPage.getByText(/Registration Keys|Registrierungsschlüssel/i)).toBeVisible();
 
-    await adminPage.getByRole("button", { name: "Create Key" }).click();
+    await adminPage.getByRole("button", { name: /add|hinzufügen/i }).click();
     await adminPage.getByLabel("Code").fill("E2E-FLOW-KEY");
-    await adminPage.getByLabel("Total Slots").fill("3");
-    await adminPage.getByLabel("Company").fill("E2EFlowCorp");
-    await adminPage.getByLabel("Company Domain").fill("e2eflow.test");
-    await adminPage.getByRole("button", { name: "Create" }).click();
+    await adminPage.getByLabel(/Nutzung|Usage/i).fill("3");
+    await adminPage.getByLabel(/Unternehmen|Company/i).fill("E2EFlowCorp");
+    await adminPage.getByLabel(/Unternehmensdomain|Company domain/i).fill("e2eflow.test");
+    await adminPage.getByRole("button", { name: /hinzufügen|add/i }).last().click();
     await adminPage.waitForTimeout(1000);
 
     // Verify key appears in admin list
@@ -25,36 +23,29 @@ test.describe("Registration key flow", () => {
     // Logout admin (clear cookies) and open registration page
     await adminPage.context().clearCookies();
     await page.goto("/register");
-    await expect(page.getByText("Create an account")).toBeVisible();
+    await expect(page.getByText(/Konto erstellen|Create an account/i)).toBeVisible();
 
     // Fill registration form with the key
-    await page.getByLabel("First name").fill("Key");
-    await page.getByLabel("Last name").fill("User");
-    await page.getByLabel("Email").fill("keyuser@e2eflow.test");
-    await page.getByLabel("Password").fill("KeyUserPass123!");
-    await page.getByLabel("Registration Key").fill("E2E-FLOW-KEY");
-    await page.getByLabel("Company").fill("E2EFlowCorp");
+    await page.getByLabel(/Vorname|First name/i).fill("Key");
+    await page.getByLabel(/Nachname|Last name/i).fill("User");
+    await page.getByLabel(/E-Mail-Adresse|Email address/i).fill("keyuser@e2eflow.test");
+    await page.getByLabel(/Passwort|Password/i).fill("KeyUserPass123!");
+    await page.getByLabel(/Registrierungsschlüssel|Registration key/i).fill("E2E-FLOW-KEY");
+    await page.getByLabel(/Unternehmen|Company/i).fill("E2EFlowCorp");
 
     // Submit
-    await page.getByRole("button", { name: "Create account" }).click();
+    await page.getByRole("button", { name: /konto erstellen|create account/i }).click();
 
     // Wait for response
     await page.waitForTimeout(2000);
 
-    // Check if registration succeeded or is pending activation
-    // (depends on SMTP config — but the key usage should increment)
+    // Check if registration succeeded or is waiting for Supabase email confirmation.
     const successMsg = page.getByText(/successful|success|please check your email/i);
     const errorMsg = page.getByText(/error|failed/i);
     void successMsg;
     void errorMsg;
 
-    // Take screenshot for evidence regardless
-    await page.screenshot({
-      path: `${EVIDENCE_DIR}/task-17-registration-with-key.png`,
-      fullPage: true,
-    });
-
-    // Save API evidence — try direct API call
+    // Confirm the same registration boundary through the API.
     const apiResponse = await page.request.post("/api/auth/register", {
       data: {
         email: "keyuser-api@e2eflow.test",
@@ -65,22 +56,7 @@ test.describe("Registration key flow", () => {
         registrationCode: "E2E-FLOW-KEY",
       },
     });
-    const responseBody = await apiResponse.json();
-
-    const evidencePath = path.resolve(process.cwd(), `${EVIDENCE_DIR}/task-17-registration-key-api.json`);
-    fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
-    fs.writeFileSync(
-      evidencePath,
-      JSON.stringify(
-        {
-          scenario: "Registration with valid key via API",
-          status: apiResponse.status(),
-          response: responseBody,
-        },
-        null,
-        2,
-      ),
-    );
+    expect(apiResponse.status()).toBe(201);
   });
 
   test("Non-admin user blocked from /admin/registration-keys API", async ({ authenticatedPage }) => {
@@ -94,20 +70,5 @@ test.describe("Registration key flow", () => {
 
     expect(apiResponse.status()).toBe(403);
 
-    const responseBody = await apiResponse.json();
-    const evidencePath = path.resolve(process.cwd(), `${EVIDENCE_DIR}/task-17-registration-key-blocked.json`);
-    fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
-    fs.writeFileSync(
-      evidencePath,
-      JSON.stringify(
-        {
-          scenario: "Non-admin blocked from registration key creation",
-          status: apiResponse.status(),
-          response: responseBody,
-        },
-        null,
-        2,
-      ),
-    );
   });
 });

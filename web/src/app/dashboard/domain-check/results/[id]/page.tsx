@@ -7,5 +7,5 @@ interface ResultsPageProps {
 export default async function DomainCheckResultsPage({ params }: ResultsPageProps) {
   const { id } = await params;
 
-  return <SavedDomainCheckPage checkId={id} view="results" />;
+  return <SavedDomainCheckPage checkId={id} />;
 }

@@ -1,125 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, registrationKeys } from '@/db';
-import { eq } from 'drizzle-orm';
-import { getSession } from '@/lib/session';
-import { Role } from '@/lib/rbac';
+import { requireAdmin } from '@/lib/auth/guards';
+import { apiErrorResponse, ApiError } from '@/lib/api-errors';
+import type { Database } from '@/lib/supabase/types';
 
-async function requireAdmin(request: NextRequest) {
-  const session = await getSession(request);
-  if (!session) {
-    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  }
-  if (session.role !== Role.ADMIN) {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { session };
+function mapKey(key: Record<string, unknown>) {
+  return { id: key.id, code: key.code, company: key.company, companyDomain: key.company_domain, totalSlots: key.total_slots, usedCount: key.used_count, enabled: key.enabled, expiresAt: key.expires_at, createdAt: key.created_at };
 }
 
-async function findKey(id: string) {
-  const result = await db
-    .select()
-    .from(registrationKeys)
-    .where(eq(registrationKeys.id, id))
-    .limit(1);
-  return result[0] || null;
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { admin } = await requireAdmin();
+    const { id } = await params;
+    const { data, error } = await admin.from('registration_keys').select('*').eq('id', id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new ApiError('NOT_FOUND', 'Registration key not found.', 404);
+    return NextResponse.json({ key: mapKey(data as unknown as Record<string, unknown>) });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const adminCheck = await requireAdmin(request);
-  if (adminCheck.error) return adminCheck.error;
-
-  const { id } = await params;
-  const key = await findKey(id);
-
-  if (!key) {
-    return NextResponse.json({ error: 'Registration key not found' }, { status: 404 });
-  }
-
-  return NextResponse.json({ key });
-}
-
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const adminCheck = await requireAdmin(request);
-  if (adminCheck.error) return adminCheck.error;
-
-  const { id } = await params;
-  const key = await findKey(id);
-
-  if (!key) {
-    return NextResponse.json({ error: 'Registration key not found' }, { status: 404 });
-  }
-
-  const body = await request.json();
-  const updateData: Record<string, unknown> = {};
-
-  if ('code' in body) {
-    if (body.code !== key.code) {
-      const existing = await db
-        .select()
-        .from(registrationKeys)
-        .where(eq(registrationKeys.code, body.code))
-        .limit(1);
-      if (existing.length > 0) {
-        return NextResponse.json(
-          { error: 'A registration key with this code already exists' },
-          { status: 409 },
-        );
-      }
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { admin } = await requireAdmin();
+    const { id } = await params;
+    const body = await request.json();
+    const values: Database['public']['Tables']['registration_keys']['Update'] = {};
+    if (body.code !== undefined) values.code = String(body.code).trim();
+    if (body.company !== undefined) values.company = body.company || null;
+    if (body.companyDomain !== undefined) values.company_domain = body.companyDomain || null;
+    if (body.totalSlots !== undefined) {
+      const slots = Number(body.totalSlots);
+      if (!Number.isInteger(slots) || slots < 1) throw new ApiError('INVALID_INPUT', 'Slot count must be positive.');
+      values.total_slots = slots;
     }
-    updateData.code = body.code;
+    if (body.enabled !== undefined) values.enabled = Boolean(body.enabled);
+    if (body.expiresAt !== undefined) values.expires_at = body.expiresAt || null;
+    const { data, error } = await admin.from('registration_keys').update(values).eq('id', id).select('*').maybeSingle();
+    if (error) throw new ApiError(error.code === '23505' ? 'CONFLICT' : 'INTERNAL_ERROR', error.message, error.code === '23505' ? 409 : 500);
+    if (!data) throw new ApiError('NOT_FOUND', 'Registration key not found.', 404);
+    return NextResponse.json({ key: mapKey(data as unknown as Record<string, unknown>) });
+  } catch (error) {
+    return apiErrorResponse(error);
   }
-  if ('company' in body) updateData.company = body.company || null;
-  if ('companyDomain' in body) updateData.companyDomain = body.companyDomain || null;
-  if ('totalSlots' in body) {
-    if (body.totalSlots < 1) {
-      return NextResponse.json(
-        { error: 'totalSlots must be at least 1' },
-        { status: 400 },
-      );
-    }
-    updateData.totalSlots = body.totalSlots;
-  }
-  if ('enabled' in body) updateData.enabled = body.enabled;
-  if ('expiresAt' in body) {
-    updateData.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
-  }
-
-  if (Object.keys(updateData).length === 0) {
-    return NextResponse.json({ key });
-  }
-
-  const [updatedKey] = await db
-    .update(registrationKeys)
-    .set(updateData)
-    .where(eq(registrationKeys.id, id))
-    .returning();
-
-  return NextResponse.json({ key: updatedKey });
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const adminCheck = await requireAdmin(request);
-  if (adminCheck.error) return adminCheck.error;
-
-  const { id } = await params;
-  const key = await findKey(id);
-
-  if (!key) {
-    return NextResponse.json({ error: 'Registration key not found' }, { status: 404 });
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { admin } = await requireAdmin();
+    const { id } = await params;
+    const { error } = await admin.from('registration_keys').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ message: 'Registration key deleted.' });
+  } catch (error) {
+    return apiErrorResponse(error);
   }
-
-  await db
-    .delete(registrationKeys)
-    .where(eq(registrationKeys.id, id));
-
-  return NextResponse.json({ message: 'Registration key deleted' });
 }

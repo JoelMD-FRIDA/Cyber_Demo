@@ -8,6 +8,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { footerLinks } from "@/config/navigation";
+import { useI18n } from "@/lib/i18n";
 
 type UserRole = "anonymous" | "user" | "admin";
 
@@ -22,11 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const savedLocale = localStorage.getItem("locale") as "de" | "en" | null;
-    document.documentElement.lang = savedLocale ?? "de";
-  }, []);
+  const { t } = useI18n();
 
   useEffect(() => {
     const skipsSessionProbe =
@@ -35,8 +32,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       pathname === "/forgot-password" ||
       pathname === "/reset-password" ||
       pathname === "/impressum" ||
-      pathname === "/datenschutz" ||
-      pathname.startsWith("/activate/");
+      pathname === "/datenschutz";
 
     if (skipsSessionProbe) {
       setSessionUser(null);
@@ -108,7 +104,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-3">
               <Image
                 src="/frida-icon.png"
-                alt="FRIDA Logo"
+                alt="FRIDA"
                 width={32}
                 height={32}
                 className="size-[var(--frida-logo-size)]"
@@ -125,7 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   className="text-xs font-semibold text-[var(--stitch-on-surface-variant)] underline underline-offset-2 transition-colors hover:text-[var(--stitch-primary)]"
                 >
-                  {item.title}
+                  {t(item.title)}
                 </Link>
               ))}
             </nav>

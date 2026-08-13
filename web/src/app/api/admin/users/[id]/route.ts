@@ -1,153 +1,77 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, users } from '@/db';
-import { eq, and, isNull } from 'drizzle-orm';
-import { getSession } from '@/lib/session';
-import { Role } from '@/lib/rbac';
-import { hashPassword } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth/guards';
+import { apiErrorResponse, ApiError } from '@/lib/api-errors';
+import type { Database } from '@/lib/supabase/types';
 
-function sanitizeUser(user: typeof users.$inferSelect) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { passwordHash, ...sanitized } = user;
-  return sanitized;
+function mapUser(profile: Record<string, unknown>) {
+  return {
+    id: profile.id,
+    email: profile.email,
+    username: profile.username,
+    firstname: profile.firstname,
+    lastname: profile.lastname,
+    company: profile.company,
+    role: profile.role,
+    performedDomainChecks: profile.performed_domain_checks,
+    createdAt: profile.created_at,
+    updatedAt: profile.updated_at,
+  };
 }
 
-async function requireAdmin(request: NextRequest) {
-  const session = await getSession(request);
-  if (!session) {
-    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { admin } = await requireAdmin();
+    const { id } = await params;
+    const { data, error } = await admin.from('profiles').select('*').eq('id', id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new ApiError('NOT_FOUND', 'User not found.', 404);
+    return NextResponse.json({ user: mapUser(data as unknown as Record<string, unknown>) });
+  } catch (error) {
+    return apiErrorResponse(error);
   }
-  if (session.role !== Role.ADMIN) {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { session };
 }
 
-async function findActiveUser(id: string) {
-  const result = await db
-    .select()
-    .from(users)
-    .where(and(eq(users.id, id), isNull(users.deletedAt)))
-    .limit(1);
-  return result[0] || null;
-}
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const adminCheck = await requireAdmin(request);
-  if (adminCheck.error) return adminCheck.error;
-
-  const { id } = await params;
-  const user = await findActiveUser(id);
-
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
-  }
-
-  return NextResponse.json({ user: sanitizeUser(user) });
-}
-
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const adminCheck = await requireAdmin(request);
-  if (adminCheck.error) return adminCheck.error;
-
-  const { id } = await params;
-  const user = await findActiveUser(id);
-
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
-  }
-
-  const body = await request.json();
-  const updateData: Record<string, unknown> = {};
-
-  if ('firstname' in body) updateData.firstname = body.firstname;
-  if ('lastname' in body) updateData.lastname = body.lastname;
-  if ('email' in body) {
-    if (body.email !== user.email) {
-      const existing = await db
-        .select()
-        .from(users)
-        .where(and(eq(users.email, body.email), isNull(users.deletedAt)))
-        .limit(1);
-      if (existing.length > 0) {
-        return NextResponse.json(
-          { error: 'Email already exists' },
-          { status: 409 },
-        );
-      }
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { admin } = await requireAdmin();
+    const { id } = await params;
+    const body = await request.json();
+    const values: Database['public']['Tables']['profiles']['Update'] = {};
+    if (body.username !== undefined) values.username = typeof body.username === 'string' && body.username.trim() ? body.username.trim().toLowerCase() : null;
+    if (body.firstname !== undefined) values.firstname = body.firstname || null;
+    if (body.lastname !== undefined) values.lastname = body.lastname || null;
+    if (body.company !== undefined) values.company = body.company || null;
+    if (body.role !== undefined) {
+      if (!['admin', 'user'].includes(body.role)) throw new ApiError('INVALID_INPUT', 'Role must be admin or user.');
+      values.role = body.role;
     }
-    updateData.email = body.email;
-  }
-  if ('username' in body) {
-    const trimmedUsername = body.username?.trim() || null;
-    if (trimmedUsername !== user.username) {
-      if (trimmedUsername) {
-        const existing = await db
-          .select()
-          .from(users)
-          .where(and(eq(users.username, trimmedUsername), isNull(users.deletedAt)))
-          .limit(1);
-        if (existing.length > 0) {
-          return NextResponse.json(
-            { error: 'Username already exists' },
-            { status: 409 },
-          );
-        }
-      }
-      updateData.username = trimmedUsername;
+
+    if (body.email !== undefined || body.password) {
+      const { error } = await admin.auth.admin.updateUserById(id, {
+        ...(body.email ? { email: String(body.email).trim().toLowerCase() } : {}),
+        ...(body.password ? { password: body.password } : {}),
+      });
+      if (error) throw new ApiError(error.code === 'email_exists' ? 'CONFLICT' : 'INVALID_INPUT', error.message, error.code === 'email_exists' ? 409 : 400);
     }
-  }
-  if ('role' in body) {
-    const validRoles = [Role.ADMIN, Role.USER];
-    if (!validRoles.includes(body.role)) {
-      return NextResponse.json(
-        { error: 'Invalid role. Must be "admin" or "user"' },
-        { status: 400 },
-      );
-    }
-    updateData.role = body.role;
-  }
-  if ('company' in body) updateData.company = body.company;
-  if ('isActivated' in body) updateData.isActivated = body.isActivated;
-  if ('password' in body && body.password) {
-    updateData.passwordHash = await hashPassword(body.password);
-  }
 
-  if (Object.keys(updateData).length === 0) {
-    return NextResponse.json({ user: sanitizeUser(user) });
+    const { data, error } = await admin.from('profiles').update(values).eq('id', id).select('*').maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new ApiError('NOT_FOUND', 'User not found.', 404);
+    return NextResponse.json({ user: mapUser(data as unknown as Record<string, unknown>) });
+  } catch (error) {
+    return apiErrorResponse(error);
   }
-
-  const [updatedUser] = await db
-    .update(users)
-    .set(updateData)
-    .where(eq(users.id, id))
-    .returning();
-
-  return NextResponse.json({ user: sanitizeUser(updatedUser) });
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const adminCheck = await requireAdmin(request);
-  if (adminCheck.error) return adminCheck.error;
-
-  const { id } = await params;
-  const user = await findActiveUser(id);
-
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { admin, user } = await requireAdmin();
+    const { id } = await params;
+    if (id === user.id) throw new ApiError('INVALID_INPUT', 'You cannot delete your own account.', 400);
+    const { error } = await admin.auth.admin.deleteUser(id);
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ message: 'User deleted.' });
+  } catch (error) {
+    return apiErrorResponse(error);
   }
-
-  await db
-    .delete(users)
-    .where(eq(users.id, id));
-
-  return NextResponse.json({ message: 'User deleted' });
 }

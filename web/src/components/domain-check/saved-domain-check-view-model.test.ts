@@ -7,21 +7,22 @@ describe('buildViewModel', () => {
       id: 'check-1',
       url: 'youtube.com',
       status: 'partial',
-      providerName: 'Cysmo',
-      categoryName: 'Security',
+      provider: { id: 'provider-1', key: 'cysmo', name: 'Cysmo' },
+      category: { id: 'category-1', key: 'security', name: 'Security' },
       createdAt: '2026-07-17T00:00:00.000Z',
       remainingChecks: 86,
       maxChecks: 100,
-      providerCount: 1,
-      results: {
+      attemptCount: 1,
+      errorCode: null,
+      errorMessage: null,
+      rawResult: {
         domain: 'youtube.com',
-        status: 'partial',
         report: { id: 'report-1', state: 'IN_PROGRESS', running: true },
         spf: { hasResults: false, signals: [] },
         ports: { openPorts: 1, hasResults: true },
         leaks: { passwordLeaks: 0, emailLeaks: 0, hasDarknetResults: false },
       },
-      structuredResults: {
+      structuredResult: {
         resultsPWLeaks: 0,
         resultsEmailLeaks: 0,
         resultsEoLSoftware: 0,
@@ -32,6 +33,9 @@ describe('buildViewModel', () => {
         hasSoftwareResults: false,
         hasOpenPortsResults: true,
       },
+      updatedAt: '2026-07-17T00:00:00.000Z',
+      startedAt: null,
+      completedAt: null,
     };
 
     const viewModel = buildViewModel(check);

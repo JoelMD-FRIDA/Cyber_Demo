@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2Icon } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 export type CrudField = {
   name: string;
@@ -44,6 +45,7 @@ export function CrudDialog({
   error = null,
   defaultValues = {},
 }: CrudDialogProps) {
+  const { t } = useI18n();
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -63,7 +65,7 @@ export function CrudDialog({
 
     for (const field of fields) {
       if (field.required && !formData[field.name]) {
-        setLocalError(`${field.label} is required.`);
+        setLocalError(`${field.label} ${t("common.required")}`);
         return;
       }
     }
@@ -71,7 +73,7 @@ export function CrudDialog({
     try {
       await onSubmit(formData);
     } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "An unexpected error occurred.");
+      setLocalError(e instanceof Error ? e.message : t("common.unexpectedError"));
     }
   }
 
@@ -83,7 +85,7 @@ export function CrudDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            {mode === "create" ? "Fill in the details to create a new entry." : "Update the details below."}
+            {mode === "create" ? t("common.createDescription") : t("common.editDescription")}
           </DialogDescription>
         </DialogHeader>
 
@@ -106,7 +108,7 @@ export function CrudDialog({
                   value={(formData[field.name] as string) || ""}
                   onChange={(e) => handleChange(field.name, e.target.value)}
                 >
-                  <option value="">Select {field.label}</option>
+                  <option value="">{t("common.select")} {field.label}</option>
                   {field.options.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
@@ -144,11 +146,11 @@ export function CrudDialog({
             onClick={() => onOpenChange(false)}
             disabled={loading}
           >
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
             {loading && <Loader2Icon className="mr-1 size-3.5 animate-spin" />}
-            {mode === "create" ? "Create" : "Save"}
+            {mode === "create" ? t("common.add") : t("common.save")}
           </Button>
         </div>
       </DialogContent>

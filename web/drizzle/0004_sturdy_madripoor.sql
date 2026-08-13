@@ -1,1 +1,0 @@
-ALTER TABLE "oauth_tokens" ADD COLUMN "provider_id" varchar(255);

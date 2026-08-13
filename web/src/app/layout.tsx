@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Open_Sans } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
+import { I18nProvider } from "@/lib/i18n";
+import { cookies } from "next/headers";
 
 const openSans = Open_Sans({
   subsets: ["latin"],
@@ -27,15 +29,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const initialLocale = cookieStore.get("locale")?.value === "en" ? "en" : "de";
   return (
-    <html lang="de" className={`${openSans.variable} ${openSans.className}`}>
+    <html lang={initialLocale} className={`${openSans.variable} ${openSans.className}`}>
       <body className="flex min-h-screen flex-col">
-        <AppShell>{children}</AppShell>
+        <I18nProvider initialLocale={initialLocale}>
+          <AppShell>{children}</AppShell>
+        </I18nProvider>
       </body>
     </html>
   );

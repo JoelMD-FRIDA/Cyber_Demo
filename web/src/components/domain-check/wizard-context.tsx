@@ -1,85 +1,33 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useReducer,
-  useCallback,
-  type ReactNode,
-  type Dispatch,
-} from "react";
+import { createContext, useCallback, useContext, useReducer, type Dispatch, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useI18n, translateApiError } from "@/lib/i18n";
 
 export interface Provider {
   id: string;
+  key: string;
   name: string;
   isActive: boolean;
+  isConfigured: boolean;
+  description?: string | null;
 }
 
 export interface Category {
   id: string;
+  key: string;
   name: string;
-}
-
-export interface StructuredResults {
-  resultsPWLeaks: number;
-  resultsEmailLeaks: number;
-  resultsEoLSoftware: number;
-  resultsOpenPorts: number;
-  resultsSPFRecord: boolean;
-  hasSPFRecordResult: boolean;
-  hasDarknetResults: boolean;
-  hasSoftwareResults: boolean;
-  hasOpenPortsResults: boolean;
-}
-
-export interface DomainCheckResults {
-  spf: {
-    hasSpf: boolean;
-    spfRecord: string | null;
-    issues: string[];
-  };
-  ports: {
-    port: number;
-    service: string;
-    status: "open" | "closed" | "filtered";
-  }[];
-  leaks: {
-    type: string;
-    severity: "low" | "medium" | "high" | "critical";
-    description: string;
-    source: string;
-  }[];
-  summary: {
-    totalChecks: number;
-    passed: number;
-    warnings: number;
-    failed: number;
-  };
-}
-
-export interface DomainCheckResponse {
-  id: string;
-  url: string;
-  status: string;
-  remainingChecks: number;
-  maxChecks: number;
-  providerCount: number;
-  results: DomainCheckResults;
-  structuredResults: StructuredResults;
+  description?: string | null;
 }
 
 export interface WizardState {
-  step: 0 | 1 | 2 | 3;
   url: string;
-  providerId: string | null;
-  categoryId: string | null;
+  providerId: string;
+  categoryId: string;
   providers: Provider[];
   categories: Category[];
-  results: DomainCheckResults | null;
-  structuredResults: StructuredResults | null;
-  checkId: string | null;
   loading: boolean;
+  optionsLoading: boolean;
   error: string | null;
   hasAcceptedDisclaimer: boolean;
   disclaimerVersion: string;
@@ -88,30 +36,25 @@ export interface WizardState {
 }
 
 type WizardAction =
-  | { type: "SET_STEP"; payload: 0 | 1 | 2 | 3 }
   | { type: "SET_URL"; payload: string }
-  | { type: "SET_PROVIDER"; payload: string | null }
-  | { type: "SET_CATEGORY"; payload: string | null }
-  | { type: "SET_PROVIDERS"; payload: Provider[] }
-  | { type: "SET_CATEGORIES"; payload: Category[] }
-  | { type: "SET_RESULTS"; payload: { results: DomainCheckResults; structuredResults: StructuredResults; id: string; remainingChecks: number; maxChecks: number } }
+  | { type: "SET_PROVIDER"; payload: string }
+  | { type: "SET_CATEGORY"; payload: string }
+  | { type: "SET_OPTIONS"; payload: { providers: Provider[]; categories: Category[]; remainingChecks: number; maxChecks: number; disclaimerVersion: string } }
+  | { type: "SET_OPTIONS_LOADING"; payload: boolean }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_ERROR"; payload: string | null }
-  | { type: "SET_DISCLAIMER_ACCEPTED"; payload: { version: string } }
-  | { type: "SET_REMAINING_CHECKS"; payload: { remaining: number; max: number } }
+  | { type: "SET_DISCLAIMER_ACCEPTED"; payload: boolean }
+  | { type: "SET_QUOTA"; payload: { remaining: number; maximum: number } }
   | { type: "RESET" };
 
 const initialState: WizardState = {
-  step: 1,
   url: "",
-  providerId: null,
-  categoryId: null,
+  providerId: "",
+  categoryId: "",
   providers: [],
   categories: [],
-  results: null,
-  structuredResults: null,
-  checkId: null,
   loading: false,
+  optionsLoading: true,
   error: null,
   hasAcceptedDisclaimer: false,
   disclaimerVersion: "1.0",
@@ -121,52 +64,27 @@ const initialState: WizardState = {
 
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
-    case "SET_STEP":
-      return { ...state, step: action.payload };
-    case "SET_URL":
-      return { ...state, url: action.payload };
-    case "SET_PROVIDER":
-      return { ...state, providerId: action.payload };
-    case "SET_CATEGORY":
-      return { ...state, categoryId: action.payload };
-    case "SET_PROVIDERS":
-      return { ...state, providers: action.payload };
-    case "SET_CATEGORIES":
-      return { ...state, categories: action.payload };
-    case "SET_RESULTS":
-      return {
-        ...state,
-        results: action.payload.results,
-        structuredResults: action.payload.structuredResults,
-        checkId: action.payload.id,
-        remainingChecks: action.payload.remainingChecks,
-        maxChecks: action.payload.maxChecks,
-        step: 2,
-      };
-    case "SET_LOADING":
-      return { ...state, loading: action.payload };
-    case "SET_ERROR":
-      return { ...state, error: action.payload };
-    case "SET_DISCLAIMER_ACCEPTED":
-      return {
-        ...state,
-        hasAcceptedDisclaimer: true,
-        disclaimerVersion: action.payload.version,
-      };
-    case "SET_REMAINING_CHECKS":
-      return {
-        ...state,
-        remainingChecks: action.payload.remaining,
-        maxChecks: action.payload.max,
-      };
-    case "RESET":
-      return {
-        ...initialState,
-        providers: state.providers,
-        categories: state.categories,
-      };
-    default:
-      return state;
+    case "SET_URL": return { ...state, url: action.payload, error: null };
+    case "SET_PROVIDER": return { ...state, providerId: action.payload, error: null };
+    case "SET_CATEGORY": return { ...state, categoryId: action.payload, error: null };
+    case "SET_OPTIONS": return {
+      ...state,
+      providers: action.payload.providers,
+      categories: action.payload.categories,
+      providerId: state.providerId || action.payload.providers.find((provider) => provider.isConfigured)?.id || action.payload.providers[0]?.id || "",
+      categoryId: state.categoryId || action.payload.categories[0]?.id || "",
+      remainingChecks: action.payload.remainingChecks,
+      maxChecks: action.payload.maxChecks,
+      disclaimerVersion: action.payload.disclaimerVersion,
+      optionsLoading: false,
+    };
+    case "SET_OPTIONS_LOADING": return { ...state, optionsLoading: action.payload };
+    case "SET_LOADING": return { ...state, loading: action.payload };
+    case "SET_ERROR": return { ...state, error: action.payload };
+    case "SET_DISCLAIMER_ACCEPTED": return { ...state, hasAcceptedDisclaimer: action.payload };
+    case "SET_QUOTA": return { ...state, remainingChecks: action.payload.remaining, maxChecks: action.payload.maximum };
+    case "RESET": return { ...initialState, providers: state.providers, categories: state.categories, providerId: state.providerId, categoryId: state.categoryId, disclaimerVersion: state.disclaimerVersion, remainingChecks: state.remainingChecks, maxChecks: state.maxChecks, optionsLoading: false };
+    default: return state;
   }
 }
 
@@ -182,20 +100,20 @@ const WizardContext = createContext<WizardContextValue | null>(null);
 export function WizardProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(wizardReducer, initialState);
   const router = useRouter();
+  const { locale, t } = useI18n();
 
   const runDomainCheck = useCallback(async () => {
-    if (!state.url) {
-      dispatch({ type: "SET_ERROR", payload: "Please enter a URL" });
+    if (!state.url.trim() || !state.providerId || !state.categoryId || !state.hasAcceptedDisclaimer) {
+      dispatch({ type: "SET_ERROR", payload: t("domain.optionsError") });
       return;
     }
 
     dispatch({ type: "SET_LOADING", payload: true });
     dispatch({ type: "SET_ERROR", payload: null });
-
     try {
-      const res = await fetch("/api/domain-check", {
+      const response = await fetch("/api/domain-check", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           url: state.url,
           providerId: state.providerId,
@@ -204,50 +122,28 @@ export function WizardProvider({ children }: { children: ReactNode }) {
           disclaimerVersion: state.disclaimerVersion,
         }),
       });
-
-      const data: DomainCheckResponse & { error?: string; code?: string; maxChecks?: number; remainingChecks?: number } = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 429 && data.code === "CHECK_LIMIT_EXCEEDED") {
-          dispatch({
-            type: "SET_ERROR",
-            payload: data.error || "Domain check limit reached.",
-          });
-          if (data.maxChecks !== undefined && data.remainingChecks !== undefined) {
-            dispatch({
-              type: "SET_REMAINING_CHECKS",
-              payload: { remaining: data.remainingChecks, max: data.maxChecks },
-            });
-          }
-          return;
+      const data = await response.json() as { check?: { id: string }; code?: string; error?: string; remainingChecks?: number; maxChecks?: number };
+      if (!response.ok || !data.check) {
+        dispatch({ type: "SET_ERROR", payload: translateApiError(locale, data.code, data.error ?? t("domain.loadError")) });
+        if (typeof data.remainingChecks === "number" && typeof data.maxChecks === "number") {
+          dispatch({ type: "SET_QUOTA", payload: { remaining: data.remainingChecks, maximum: data.maxChecks } });
         }
-        dispatch({ type: "SET_ERROR", payload: data.error || "Domain check failed" });
         return;
       }
-
-      router.push(`/dashboard/domain-check/results/${data.id}`);
+      router.push(`/dashboard/domain-check/results/${data.check.id}`);
     } catch {
-      dispatch({ type: "SET_ERROR", payload: "An unexpected error occurred. Please try again." });
+      dispatch({ type: "SET_ERROR", payload: t("domain.loadError") });
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
     }
-  }, [router, state.url, state.providerId, state.categoryId, state.hasAcceptedDisclaimer, state.disclaimerVersion]);
+  }, [locale, router, state.categoryId, state.disclaimerVersion, state.hasAcceptedDisclaimer, state.providerId, state.url, t]);
 
-  const resetWizard = useCallback(() => {
-    dispatch({ type: "RESET" });
-  }, []);
-
-  return (
-    <WizardContext.Provider value={{ state, dispatch, runDomainCheck, resetWizard }}>
-      {children}
-    </WizardContext.Provider>
-  );
+  const resetWizard = useCallback(() => dispatch({ type: "RESET" }), []);
+  return <WizardContext.Provider value={{ state, dispatch, runDomainCheck, resetWizard }}>{children}</WizardContext.Provider>;
 }
 
-export function useWizard() {
+export function useWizard(): WizardContextValue {
   const context = useContext(WizardContext);
-  if (!context) {
-    throw new Error("useWizard must be used within a WizardProvider");
-  }
+  if (!context) throw new Error("useWizard must be used within a WizardProvider");
   return context;
 }

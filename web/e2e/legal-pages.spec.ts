@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { hasSupabaseE2EConfig } from "./config";
 
 test.describe("German legal pages", () => {
+  test.skip(!hasSupabaseE2EConfig, "Configure a dedicated Supabase test project for browser E2E tests.");
   test("/impressum returns 200 and displays German heading", async ({
     page,
   }) => {
@@ -47,6 +49,6 @@ test.describe("German legal pages", () => {
     await expect(impressumLink).toHaveAttribute("href", "/impressum");
     await expect(datenschutzLink).toHaveAttribute("href", "/datenschutz");
 
-    await expect(page.getByAltText("FRIDA Logo")).toBeVisible();
+    await expect(page.getByAltText("FRIDA").first()).toBeVisible();
   });
 });

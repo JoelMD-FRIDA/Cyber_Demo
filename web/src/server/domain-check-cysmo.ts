@@ -1,148 +1,182 @@
 import { fetchCysmoJson, formatResponseBody } from './domain-check-cysmo-http';
 import { normalizeDomainName } from './domain-check-url';
+import { parseCheckResponse } from './domain-check-results';
+import type { StructuredDomainCheckResult } from './domain-check-types';
 
-const REPORT_POLL_INTERVAL_MS = 15_000;
-const REPORT_POLL_TIMEOUT_MS = 120_000;
-const REPORT_POLL_ATTEMPTS = 8;
-
-interface CysmoReportRequest {
-  readonly apiBaseUrl: string;
-  readonly token: string;
-  readonly reportId: string;
+export interface ProviderStartInput {
+  readonly url: string;
+  readonly providerKey: string;
 }
 
-export async function sendCheckRequest(
-  apiBaseUrl: string,
-  token: string,
-  url: string,
-): Promise<Record<string, unknown>> {
-  const domain = normalizeDomainName(url);
-  const createResponse = await fetchCysmoJson({
-    apiBaseUrl,
-    token,
-    path: '/v2/companies?acceptSubDomain=true&acceptNotReachable=true',
+export interface ProviderPollInput {
+  readonly url: string;
+  readonly externalJobId: string;
+  readonly externalReportId?: string | null;
+  readonly providerKey: string;
+}
+
+export interface ProviderJob {
+  readonly externalJobId: string;
+  readonly externalReportId?: string;
+  readonly snapshot: Record<string, unknown>;
+}
+
+export type ProviderPollResult =
+  | { readonly status: 'pending'; readonly snapshot: Record<string, unknown>; readonly externalReportId?: string }
+  | { readonly status: 'completed'; readonly snapshot: Record<string, unknown>; readonly externalReportId?: string }
+  | { readonly status: 'failed'; readonly errorCode: string; readonly errorMessage: string; readonly snapshot?: Record<string, unknown> };
+
+export interface DomainCheckProvider {
+  readonly key: string;
+  readonly isConfigured: boolean;
+  start(input: ProviderStartInput): Promise<ProviderJob>;
+  poll(input: ProviderPollInput): Promise<ProviderPollResult>;
+  normalize(result: unknown): {
+    readonly structuredResult: StructuredDomainCheckResult;
+    readonly richResult: Record<string, unknown>;
+  };
+}
+
+interface CysmoConfig {
+  readonly apiBaseUrl: string;
+  readonly clientId: string;
+  readonly clientSecret: string;
+}
+
+function getCysmoConfig(): CysmoConfig | null {
+  const apiBaseUrl = process.env.CYSMO_API_BASE_URL?.trim();
+  const clientId = process.env.CYSMO_CLIENT_ID?.trim();
+  const clientSecret = process.env.CYSMO_CLIENT_SECRET?.trim();
+  if (!apiBaseUrl || !clientId || !clientSecret) return null;
+  return { apiBaseUrl, clientId, clientSecret };
+}
+
+async function getCysmoToken(config: CysmoConfig): Promise<string> {
+  const tokenUrl = `${config.apiBaseUrl.replace(/\/+$/, '')}/oauth/token`;
+  const response = await fetch(tokenUrl, {
     method: 'POST',
-    body: JSON.stringify({ domains: [domain], nets: [] }),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+    }),
   });
 
-  const isAcknowledgementError =
-    createResponse.status === 422 && isUnacknowledgedSubdomainsError(createResponse.body);
-
-  if (!createResponse.ok && !isAcknowledgementError) {
-    throw new Error(
-      `Domain check request failed (${createResponse.status}): ${formatResponseBody(createResponse)}`,
-    );
+  const body = await response.text();
+  let parsed: unknown = body;
+  try {
+    parsed = body ? JSON.parse(body) : null;
+  } catch {
+    // Preserve the text in the error below.
   }
 
-  const companyId = getCompanyId(createResponse.body, createResponse.headers);
-  if (!companyId) {
-    return {
-      domain,
-      status: 'partial',
-      createResponse: createResponse.body,
-      unacknowledgedSubdomains: getUnacknowledgedSubdomains(createResponse.body),
-      partialReason: 'Cysmo company creation did not include a company id.',
-    };
+  if (!response.ok || !isRecord(parsed) || typeof parsed.access_token !== 'string') {
+    throw new Error(`Cysmo OAuth token request failed (${response.status}): ${formatUnknownBody(parsed)}`);
   }
+  return parsed.access_token;
+}
 
-  const readyReportId = findReadyReportId(createResponse.body);
-  if (readyReportId) {
-    const report = await fetchReportResult({ apiBaseUrl, token, reportId: readyReportId });
-    return {
-      domain,
-      status: 'finished',
-      company: createResponse.body,
-      report,
-    };
-  }
+class CysmoProvider implements DomainCheckProvider {
+  readonly key = 'cysmo';
+  readonly isConfigured = getCysmoConfig() !== null;
 
-  const runningReportId = findReportId(createResponse.body);
-  if (runningReportId) {
-    const report = await fetchReportResult({ apiBaseUrl, token, reportId: runningReportId });
-    return {
-      domain,
-      status: 'partial',
-      company: createResponse.body,
-      createResponse: createResponse.body,
-      report,
-      unacknowledgedSubdomains: getUnacknowledgedSubdomains(createResponse.body),
-      partialReason: 'Cysmo report is still running.',
-    };
-  }
-
-  const deadline = Date.now() + REPORT_POLL_TIMEOUT_MS;
-  let latestCompany = createResponse.body;
-
-  for (let attempt = 1; attempt <= REPORT_POLL_ATTEMPTS; attempt++) {
-    if (attempt > 1) {
-      const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) break;
-      await sleep(Math.min(REPORT_POLL_INTERVAL_MS, remainingMs));
-    }
-
-    const companyResponse = await fetchCysmoJson({
-      apiBaseUrl,
+  async start(input: ProviderStartInput): Promise<ProviderJob> {
+    const config = getCysmoConfig();
+    if (!config) throw new Error('Cysmo provider is not configured.');
+    const token = await getCysmoToken(config);
+    const domain = normalizeDomainName(input.url);
+    const response = await fetchCysmoJson({
+      apiBaseUrl: config.apiBaseUrl,
       token,
-      path: `/v2/companies/${encodeURIComponent(companyId)}`,
+      path: '/v2/companies?acceptSubDomain=true&acceptNotReachable=true',
+      method: 'POST',
+      body: JSON.stringify({ domains: [domain], nets: [] }),
     });
 
-    if (!companyResponse.ok) {
-      throw new Error(
-        `Cysmo company poll failed (${companyResponse.status}): ${formatResponseBody(companyResponse)}`,
-      );
+    const isAcknowledgementError = response.status === 422 && isUnacknowledgedSubdomainsError(response.body);
+    if (!response.ok && !isAcknowledgementError) {
+      throw new Error(`Cysmo company creation failed (${response.status}): ${formatResponseBody(response)}`);
     }
 
-    latestCompany = companyResponse.body;
-    const reportId = findReadyReportId(companyResponse.body);
-    if (reportId) {
-      const report = await fetchReportResult({ apiBaseUrl, token, reportId });
-      return {
+    const companyId = getCompanyId(response.body, response.headers);
+    if (!companyId) {
+      throw new Error('Cysmo company creation did not return a company ID.');
+    }
+
+    const reportId = findReportId(response.body);
+    return {
+      externalJobId: companyId,
+      externalReportId: reportId,
+      snapshot: {
         domain,
-        status: 'finished',
-        company: latestCompany,
-        report,
+        createResponse: response.body,
+        unacknowledgedSubdomains: getUnacknowledgedSubdomains(response.body),
+      },
+    };
+  }
+
+  async poll(input: ProviderPollInput): Promise<ProviderPollResult> {
+    const config = getCysmoConfig();
+    if (!config) {
+      return { status: 'failed', errorCode: 'PROVIDER_NOT_CONFIGURED', errorMessage: 'Cysmo provider is not configured.' };
+    }
+
+    try {
+      const token = await getCysmoToken(config);
+      const response = await fetchCysmoJson({
+        apiBaseUrl: config.apiBaseUrl,
+        token,
+        path: `/v2/companies/${encodeURIComponent(input.externalJobId)}`,
+      });
+
+      if (!response.ok) {
+        return {
+          status: 'failed',
+          errorCode: `CYSMO_COMPANY_${response.status}`,
+          errorMessage: `Cysmo company poll failed (${response.status}): ${formatResponseBody(response)}`,
+        };
+      }
+
+      const body = isRecord(response.body) ? response.body : { value: response.body };
+      const reportId = findReportId(body) ?? input.externalReportId ?? undefined;
+      const report = findReadyReport(body);
+      const snapshot = {
+        domain: normalizeDomainName(input.url),
+        company: body,
+        report: report ?? undefined,
+        unacknowledgedSubdomains: getUnacknowledgedSubdomains(body),
+      };
+
+      if (!report || !isReportReady(report)) {
+        return { status: 'pending', snapshot, externalReportId: reportId };
+      }
+
+      return { status: 'completed', snapshot, externalReportId: reportId };
+    } catch (error) {
+      return {
+        status: 'failed',
+        errorCode: 'CYSMO_POLL_FAILED',
+        errorMessage: error instanceof Error ? error.message : String(error),
       };
     }
   }
 
-  const latestReportId = findReportId(latestCompany) ?? findReportId(createResponse.body);
-  if (latestReportId) {
-    const report = await fetchReportResult({ apiBaseUrl, token, reportId: latestReportId });
-    return {
-      domain,
-      status: 'partial',
-      company: latestCompany,
-      createResponse: createResponse.body,
-      report,
-      unacknowledgedSubdomains: getUnacknowledgedSubdomains(createResponse.body),
-      partialReason: 'Cysmo report did not finish before the polling timeout.',
-    };
+  normalize(result: unknown) {
+    const raw = isRecord(result) ? result : {};
+    const parsed = parseCheckResponse(raw);
+    return { structuredResult: parsed.structured, richResult: parsed.rich };
   }
-
-  return {
-    domain,
-    status: 'partial',
-    company: latestCompany,
-    createResponse: createResponse.body,
-    unacknowledgedSubdomains: getUnacknowledgedSubdomains(createResponse.body),
-    partialReason: 'Cysmo report did not finish before the polling timeout.',
-  };
 }
 
-async function fetchReportResult(request: CysmoReportRequest): Promise<unknown> {
-  const reportResponse = await fetchCysmoJson({
-    apiBaseUrl: request.apiBaseUrl,
-    token: request.token,
-    path: `/v2/reports/${encodeURIComponent(request.reportId)}?dataMode=TECH`,
-  });
+const cysmoProvider = new CysmoProvider();
 
-  if (!reportResponse.ok) {
-    throw new Error(
-      `Cysmo report fetch failed (${reportResponse.status}): ${formatResponseBody(reportResponse)}`,
-    );
-  }
+export function getProviderAdapter(providerKey: string): DomainCheckProvider | null {
+  return providerKey === cysmoProvider.key ? cysmoProvider : null;
+}
 
-  return reportResponse.body;
+export function isProviderConfigured(providerKey: string): boolean {
+  return getProviderAdapter(providerKey)?.isConfigured ?? false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -159,19 +193,15 @@ function getStringArray(value: unknown): readonly string[] | undefined {
   return strings.length > 0 ? strings : undefined;
 }
 
-function isUnacknowledgedSubdomainsError(body: unknown): boolean {
-  if (!isRecord(body)) return false;
-  return body['type'] === 'UNACKNOWLEDGED_SUBDOMAINS';
-}
-
-function getUnacknowledgedSubdomains(body: unknown): readonly string[] | undefined {
-  if (!isRecord(body)) return undefined;
-  return getStringArray(body['domains']);
-}
-
 function getCompanyId(body: unknown, headers: Headers): string | undefined {
-  const bodyId = getIdFromBody(body);
-  if (bodyId) return bodyId;
+  if (isRecord(body)) {
+    const directId = getString(body.id);
+    if (directId) return directId;
+    if (isRecord(body.company)) {
+      const nestedId = getString(body.company.id);
+      if (nestedId) return nestedId;
+    }
+  }
 
   const location = headers.get('Location');
   if (!location) return undefined;
@@ -179,38 +209,37 @@ function getCompanyId(body: unknown, headers: Headers): string | undefined {
   return match?.[1] ? decodeURIComponent(match[1]) : undefined;
 }
 
-function getIdFromBody(body: unknown): string | undefined {
-  if (!isRecord(body)) return undefined;
-  const id = getString(body['id']);
-  if (id) return id;
-
-  const company = body['company'];
-  if (!isRecord(company)) return undefined;
-  return getString(company['id']);
-}
-
-function findReadyReportId(body: unknown): string | undefined {
-  const reports = getReports(body);
-  const report = reports.find(isReportReady);
-  return report ? getString(report['id']) : undefined;
+function getReports(body: unknown): readonly Record<string, unknown>[] {
+  const company = isRecord(body) && isRecord(body.company) ? body.company : body;
+  if (!isRecord(company) || !Array.isArray(company.reports)) return [];
+  return company.reports.filter(isRecord);
 }
 
 function findReportId(body: unknown): string | undefined {
-  const reports = getReports(body);
-  const report = reports.find((candidate) => getString(candidate['id']));
-  return report ? getString(report['id']) : undefined;
+  return getReports(body).map((report) => getString(report.id)).find((id): id is string => Boolean(id));
+}
+
+function findReadyReport(body: unknown): Record<string, unknown> | undefined {
+  return getReports(body).find(isReportReady);
 }
 
 function isReportReady(report: Record<string, unknown>): boolean {
-  return report['running'] === false || report['state'] === 'FINISHED' || report['finished'] === true;
+  return report.running === false || report.state === 'FINISHED' || report.finished === true;
 }
 
-function getReports(body: unknown): readonly Record<string, unknown>[] {
-  const company = isRecord(body) && isRecord(body['company']) ? body['company'] : body;
-  if (!isRecord(company) || !Array.isArray(company['reports'])) return [];
-  return company['reports'].filter(isRecord);
+function isUnacknowledgedSubdomainsError(body: unknown): boolean {
+  return isRecord(body) && body.type === 'UNACKNOWLEDGED_SUBDOMAINS';
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function getUnacknowledgedSubdomains(body: unknown): readonly string[] | undefined {
+  return isRecord(body) ? getStringArray(body.domains) : undefined;
+}
+
+function formatUnknownBody(body: unknown): string {
+  if (typeof body === 'string') return body || 'empty response';
+  try {
+    return JSON.stringify(body);
+  } catch {
+    return 'unserializable response';
+  }
 }

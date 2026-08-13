@@ -71,7 +71,7 @@
   --frida-sidebar-width-open: var(--stitch-sidebar-width);
   --frida-sidebar-width-collapsed: var(--stitch-sidebar-width-collapsed);
   --frida-mobile-header-height: 45px;
-  --frida-font-family: var(--font-open-sans, "Open Sans", sans-serif);
+  --frida-font-family: "Open Sans", "Segoe UI", Arial, sans-serif;
   --frida-font-size-default: 14px;
   --frida-font-size-large: 15px;
   --frida-font-size-small: 12px;
@@ -100,6 +100,9 @@
   --frida-space-large: 24px;
   --frida-space-larger: 32px;
   --frida-space-largest: 48px;
+  --frida-content-max: 80rem;
+  --frida-page-gutter: clamp(16px, 3vw, 32px);
+  --frida-page-padding: clamp(24px, 4vw, 40px);
   --frida-shadow-topbar: 0 1px 1px 1px #556B8240;
   --frida-shadow-sidebar: 0 0 4px rgb(0 0 0 / 14%), 2px 4px 8px rgb(0 0 0 / 28%);
 
@@ -245,7 +248,7 @@
     position: relative;
     width: 100%;
     min-height: calc(100vh - var(--frida-topbar-height));
-    padding: 24px;
+    padding: var(--frida-page-padding) var(--frida-page-gutter);
     background:
       var(--stitch-line-motif),
       var(--frida-app-background);
@@ -568,14 +571,25 @@
   .frida-content-page {
     width: 100%;
     min-height: calc(100vh - var(--frida-topbar-height));
-    padding: 24px;
+    padding: var(--frida-page-padding) var(--frida-page-gutter);
     background:
       var(--stitch-line-motif),
       var(--frida-app-background);
   }
 
+  .frida-content-page > * {
+    width: 100%;
+    max-width: var(--frida-content-max);
+    margin-inline: auto;
+  }
+
+  .frida-dashboard-home {
+    min-height: calc(100vh - var(--frida-topbar-height));
+    background: var(--frida-gradient-background);
+  }
+
   .frida-pageheader {
-    margin-bottom: 24px;
+    margin-bottom: 20px;
   }
 
   .frida-pageheader h1 {

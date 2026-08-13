@@ -1,7 +1,7 @@
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { requireUser } from '@/lib/auth/guards';
 import { ApiError } from '@/lib/api-errors';
-import { CURRENT_DISCLAIMER_VERSION, getCronBatchSize, getCronLeaseSeconds, getDomainCheckLimit } from '@/lib/domain-check/config';
+import { CURRENT_DISCLAIMER_VERSION, getCronBatchSize, getCronLeaseSeconds, getDomainCheckLimit, getDomainCheckPollIntervalMs } from '@/lib/domain-check/config';
 import { getProviderAdapter, isProviderConfigured } from './domain-check-cysmo';
 import { isValidUrl, normalizeDomainName } from './domain-check-url';
 import type { StructuredDomainCheckResult } from './domain-check-types';
@@ -151,6 +151,41 @@ export async function getDomainCheck(id: string) {
   };
 }
 
+/**
+ * Process one check when its results page is being actively viewed. This keeps
+ * the persisted queue useful on deployments without a paid scheduler while
+ * retaining the same lease and state-transition rules as the batch worker.
+ */
+export async function processDomainCheckOnDemand(id: string): Promise<void> {
+  const context = await requireUser();
+  const { data: ownedCheck, error: ownershipError } = await context.supabase
+    .from('domain_checks')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', context.user.id)
+    .maybeSingle();
+
+  if (ownershipError) throw new ApiError('INTERNAL_ERROR', 'Unable to load the domain check.', 500);
+  if (!ownedCheck) throw new ApiError('CHECK_NOT_FOUND', 'Domain check not found.', 404);
+
+  const admin = createSupabaseAdminClient();
+  const { data: claimed, error: claimError } = await admin.rpc('claim_domain_check', {
+    p_check_id: id,
+    p_lease_seconds: getCronLeaseSeconds(),
+  });
+  if (claimError) throw new Error(`Unable to claim domain check: ${claimError.message}`);
+
+  const row = Array.isArray(claimed) ? claimed[0] : claimed;
+  if (!row) return;
+
+  try {
+    await processClaimedCheck(admin, row as DomainCheckRow);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await markCheckFailed(admin, row as DomainCheckRow, 'WORKER_FAILED', message);
+  }
+}
+
 export async function processDomainCheckQueue(): Promise<{ processed: number; pending: number; failed: number; errors: string[] }> {
   const admin = createSupabaseAdminClient();
   const { data: claimed, error } = await admin.rpc('claim_domain_checks', {
@@ -214,7 +249,7 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
       external_report_id: started.externalReportId ?? null,
       raw_result: started.snapshot as Json,
       status: 'queued',
-      next_poll_at: new Date(Date.now() + 15_000).toISOString(),
+      next_poll_at: new Date(Date.now() + getDomainCheckPollIntervalMs()).toISOString(),
       lease_until: null,
     });
     return 'pending';
@@ -237,7 +272,7 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
       status: 'queued',
       raw_result: polled.snapshot as Json,
       external_report_id: polled.externalReportId ?? row.external_report_id,
-      next_poll_at: new Date(Date.now() + 15_000).toISOString(),
+      next_poll_at: new Date(Date.now() + getDomainCheckPollIntervalMs()).toISOString(),
       lease_until: null,
     });
     return 'pending';
@@ -272,7 +307,7 @@ async function scheduleRetryOrFail(
   await updateCheck(admin, row.id, {
     status: 'queued',
     raw_result: (snapshot ?? row.raw_result) as Json | null,
-    next_poll_at: new Date(Date.now() + Math.min(row.attempt_count * 15_000, 60_000)).toISOString(),
+    next_poll_at: new Date(Date.now() + Math.min(Math.max(row.attempt_count, 1) * getDomainCheckPollIntervalMs(), 60_000)).toISOString(),
     lease_until: null,
     last_error_code: code,
     last_error_message: message,

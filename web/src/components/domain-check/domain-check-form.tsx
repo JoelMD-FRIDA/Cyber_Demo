@@ -60,7 +60,7 @@ export default function DomainCheckForm() {
             <>
               <div className="space-y-2">
                 <label htmlFor="domain-url" className="text-sm font-semibold">{t("domain.url")}</label>
-                <Input id="domain-url" type="url" inputMode="url" placeholder={t("domain.urlHint")} value={state.url} onChange={(event) => dispatch({ type: "SET_URL", payload: event.target.value })} className={fieldClass} required />
+                <Input id="domain-url" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={t("domain.urlHint")} value={state.url} onChange={(event) => dispatch({ type: "SET_URL", payload: event.target.value })} className={fieldClass} required />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

@@ -73,7 +73,7 @@ export function AppSidebar({ userRole = null }: AppSidebarProps) {
                       <SidebarMenuButton
                         isActive={isActive}
                         tooltip={t(item.title)}
-                        className="h-10 rounded-[var(--stitch-control-radius)] border-l-4 border-transparent px-[var(--stitch-space-md)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--stitch-on-surface-variant)] transition-colors hover:bg-[var(--stitch-surface-container)] hover:text-[var(--stitch-primary)] data-active:border-[var(--stitch-primary)] data-active:bg-[var(--stitch-surface-container)] data-active:text-[var(--stitch-primary)] group-data-[collapsible=icon]:size-[var(--frida-sidebar-width-collapsed)]! group-data-[collapsible=icon]:p-0! [&_svg]:size-5"
+                        className="h-10 rounded-[var(--stitch-control-radius)] border-l-4 border-transparent px-[var(--stitch-space-md)] text-[13px] font-semibold text-[var(--stitch-on-surface-variant)] transition-colors hover:bg-[var(--stitch-surface-container)] hover:text-[var(--stitch-primary)] data-active:border-[var(--stitch-primary)] data-active:bg-[var(--stitch-surface-container)] data-active:text-[var(--stitch-primary)] group-data-[collapsible=icon]:size-[var(--frida-sidebar-width-collapsed)]! group-data-[collapsible=icon]:p-0! [&_svg]:size-5"
                       >
                         <Link href={item.href} prefetch={false} className="flex h-full min-w-0 flex-1 items-center gap-[var(--frida-space-small)] group-data-[collapsible=icon]:justify-center">
                           <Icon className="size-4" />

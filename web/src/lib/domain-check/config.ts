@@ -12,3 +12,9 @@ export function getCronBatchSize(): number {
 export function getCronLeaseSeconds(): number {
   return 45;
 }
+
+export function getDomainCheckPollIntervalMs(): number {
+  const raw = Number.parseInt(process.env.DOMAIN_CHECK_POLL_INTERVAL_SECONDS ?? '5', 10);
+  const seconds = Number.isFinite(raw) ? Math.min(Math.max(raw, 3), 30) : 5;
+  return seconds * 1000;
+}

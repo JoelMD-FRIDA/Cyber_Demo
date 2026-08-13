@@ -116,6 +116,7 @@ export type Database = {
         Returns: Database['public']['Tables']['domain_checks']['Row'][];
       };
       claim_domain_checks: { Args: { p_limit: number; p_lease_seconds?: number }; Returns: Database['public']['Tables']['domain_checks']['Row'][] };
+      claim_domain_check: { Args: { p_check_id: string; p_lease_seconds?: number }; Returns: Database['public']['Tables']['domain_checks']['Row'][] };
     };
     Enums: {
       user_role: 'admin' | 'user';

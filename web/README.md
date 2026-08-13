@@ -1,7 +1,7 @@
 # FRIDA Domain Check
 
 FRIDA is a bilingual domain-security checker built for Vercel and Supabase.
-Supabase Auth owns identity, Supabase Postgres stores the five application tables, and Supabase Storage stores catalog assets. Domain checks are queued in Postgres and processed by the protected worker endpoint when an external scheduler invokes it.
+Supabase Auth owns identity, Supabase Postgres stores the five application tables, and Supabase Storage stores catalog assets. Domain checks are persisted in Postgres and advanced by the lease-based worker while the active results page is open; the protected batch endpoint remains available for an external scheduler.
 
 ## Local development
 
@@ -35,11 +35,11 @@ The required variables are documented in `.env.example`:
 
 Supabase Auth handles confirmation, recovery, and reset emails. Configure custom SMTP and email templates in Supabase under Authentication settings. The application does not contain an SMTP client, email queue, email tables, or admin email-configuration screens.
 
-No Vercel Cron jobs are registered because the Vercel Hobby plan only supports once-daily schedules. The protected `/api/cron/process-domain-checks` endpoint remains available for a future external scheduler or manual operations. Until one is configured, newly queued domain checks will remain queued.
+No Vercel Cron jobs are registered because the Vercel Hobby plan only supports once-daily schedules. The saved-check page cooperatively advances the active check through the protected, lease-based worker logic while it is open, so an active scan does not depend on a paid scheduler. The protected `/api/cron/process-domain-checks` endpoint remains available for a future external scheduler or manual operations if abandoned checks must also be processed.
 
 ## Database safety
 
-`supabase/migrations/20260813000000_initial.sql` replaces the enumerated app-owned tables and does not touch Supabase system schemas. The old custom users and Mendix-parity data are intentionally not migrated. Do not apply it until the backup and credential checks above have succeeded.
+`supabase/migrations/20260813000000_initial.sql` replaces the enumerated app-owned tables and does not touch Supabase system schemas. The follow-up `20260813000001_on_demand_domain_check_claim.sql` adds the per-check lease function used by active results pages. The old custom users and Mendix-parity data are intentionally not migrated. Do not apply either migration until the backup and credential checks above have succeeded.
 
 Admin access is bootstrapped through the protected service-role operation below; no default admin password is stored in this repository. If `ADMIN_EMAIL` and `ADMIN_PASSWORD` are configured in Vercel, the build makes that account idempotently exist and keeps its profile role set to `admin`.
 

@@ -66,7 +66,7 @@ describe("POST /api/auth/login", () => {
     const response = await POST(buildRequest({ identifier: "person@example.com", password: "Secure123!" }));
 
     expect(response.status).toBe(200);
-    expect(response.cookies.get("sb-session")?.value).toBe("session-token");
+    expect(response.headers.get("set-cookie")).toContain("sb-session=session-token");
     expect(mocks.getResponse).toHaveBeenCalled();
   });
 

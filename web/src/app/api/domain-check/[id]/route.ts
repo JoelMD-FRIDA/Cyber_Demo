@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { apiErrorResponse } from '@/lib/api-errors';
-import { getDomainCheck } from '@/server/domain-check-service';
+import { getDomainCheck, processDomainCheckOnDemand } from '@/server/domain-check-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    return NextResponse.json({ check: await getDomainCheck(id) });
+    const check = await getDomainCheck(id);
+    if (check.status === 'queued' || check.status === 'running') {
+      await processDomainCheckOnDemand(id);
+      return NextResponse.json({ check: await getDomainCheck(id) });
+    }
+    return NextResponse.json({ check });
   } catch (error) {
     return apiErrorResponse(error);
   }

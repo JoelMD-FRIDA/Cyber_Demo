@@ -11,7 +11,7 @@ function DomainCheckContent() {
 
 export default function DomainCheckPage() {
   return (
-    <div className="min-h-[calc(100vh-var(--frida-topbar-height))] bg-[var(--frida-app-background)] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="frida-content-page">
       <WizardProvider>
         <DomainCheckContent />
       </WizardProvider>

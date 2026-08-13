@@ -26,9 +26,14 @@ export async function POST(request: NextRequest) {
       email = profile.email;
     }
 
-    const { supabase, response: cookieResponse } = createSupabaseRouteClient(request);
+    const { supabase, getResponse } = createSupabaseRouteClient(request);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error || !data.user) throw new ApiError('UNAUTHORIZED', 'Invalid email/username or password.', 401);
+    if (error || !data.user) {
+      if (error?.code === 'email_not_confirmed') {
+        throw new ApiError('EMAIL_NOT_CONFIRMED', 'Please confirm your email address before signing in.', 401);
+      }
+      throw new ApiError('UNAUTHORIZED', 'Invalid email/username or password.', 401);
+    }
 
     const admin = createSupabaseAdminClient();
     const { data: profile } = await admin.from('profiles').select('*').eq('id', data.user.id).maybeSingle();
@@ -42,7 +47,7 @@ export async function POST(request: NextRequest) {
       lastname: profile.lastname,
       role: profile.role,
     });
-    copyCookies(cookieResponse, result);
+    copyCookies(getResponse(), result);
     return result;
   } catch (error) {
     return apiErrorResponse(error);

@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  const { supabase, response: cookieResponse } = createSupabaseRouteClient(request);
+  const { supabase, getResponse } = createSupabaseRouteClient(request);
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     redirectUrl.pathname = '/login';
@@ -21,6 +21,6 @@ export async function GET(request: NextRequest) {
   }
 
   const response = NextResponse.redirect(redirectUrl);
-  for (const cookie of cookieResponse.cookies.getAll()) response.cookies.set(cookie);
+  for (const cookie of getResponse().cookies.getAll()) response.cookies.set(cookie);
   return response;
 }

@@ -6,7 +6,7 @@ import { getSupabaseAnonKey, getSupabaseUrl } from './env';
 
 export function createSupabaseRouteClient(
   request: NextRequest,
-): { supabase: SupabaseClient<Database>; response: NextResponse } {
+): { supabase: SupabaseClient<Database>; getResponse: () => NextResponse } {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(getSupabaseUrl(), getSupabaseAnonKey(), {
@@ -22,5 +22,5 @@ export function createSupabaseRouteClient(
     },
   });
 
-  return { supabase, response };
+  return { supabase, getResponse: () => response };
 }

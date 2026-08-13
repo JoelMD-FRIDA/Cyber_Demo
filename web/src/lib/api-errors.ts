@@ -1,5 +1,6 @@
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
+  | 'EMAIL_NOT_CONFIRMED'
   | 'FORBIDDEN'
   | 'INVALID_INPUT'
   | 'NOT_FOUND'

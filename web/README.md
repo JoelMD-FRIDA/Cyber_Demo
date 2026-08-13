@@ -1,7 +1,7 @@
 # FRIDA Domain Check
 
 FRIDA is a bilingual domain-security checker built for Vercel and Supabase.
-Supabase Auth owns identity, Supabase Postgres stores the five application tables, and Supabase Storage stores catalog assets. Domain checks are queued in Postgres and processed by the protected Vercel Cron worker.
+Supabase Auth owns identity, Supabase Postgres stores the five application tables, and Supabase Storage stores catalog assets. Domain checks are queued in Postgres and processed by the protected worker endpoint when an external scheduler invokes it.
 
 ## Local development
 
@@ -34,6 +34,8 @@ The required variables are documented in `.env.example`:
 - `CRON_SECRET`, `DOMAIN_CHECK_MAX_PER_USER`, and `NEXT_PUBLIC_BASE_URL`
 
 There is no application SMTP, JWT, PGP, LDAP, or local-Postgres configuration. Password confirmation, recovery, and reset emails are configured in Supabase Auth.
+
+No Vercel Cron jobs are registered because the Vercel Hobby plan only supports once-daily schedules. The protected `/api/cron/process-domain-checks` endpoint remains available for a future external scheduler or manual operations. Until one is configured, newly queued domain checks will remain queued.
 
 ## Database safety
 

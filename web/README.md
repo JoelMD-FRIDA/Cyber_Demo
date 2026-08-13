@@ -31,9 +31,9 @@ The required variables are documented in `.env.example`:
 
 - Supabase URL, anon key, and service-role key
 - Cysmo base URL, client ID, and client secret
-- `CRON_SECRET`, `DOMAIN_CHECK_MAX_PER_USER`, and `NEXT_PUBLIC_BASE_URL`
+- `CRON_SECRET`, `DOMAIN_CHECK_MAX_PER_USER`, `NEXT_PUBLIC_BASE_URL`, and optional admin bootstrap credentials
 
-There is no application SMTP, JWT, PGP, LDAP, or local-Postgres configuration. Password confirmation, recovery, and reset emails are configured in Supabase Auth.
+Supabase Auth handles confirmation, recovery, and reset emails. Configure custom SMTP and email templates in Supabase under Authentication settings. The application does not contain an SMTP client, email queue, email tables, or admin email-configuration screens.
 
 No Vercel Cron jobs are registered because the Vercel Hobby plan only supports once-daily schedules. The protected `/api/cron/process-domain-checks` endpoint remains available for a future external scheduler or manual operations. Until one is configured, newly queued domain checks will remain queued.
 
@@ -41,13 +41,15 @@ No Vercel Cron jobs are registered because the Vercel Hobby plan only supports o
 
 `supabase/migrations/20260813000000_initial.sql` replaces the enumerated app-owned tables and does not touch Supabase system schemas. The old custom users and Mendix-parity data are intentionally not migrated. Do not apply it until the backup and credential checks above have succeeded.
 
-Admin access is bootstrapped through a one-time protected Supabase operation; no default admin password is stored in this repository.
+Admin access is bootstrapped through the protected service-role operation below; no default admin password is stored in this repository. If `ADMIN_EMAIL` and `ADMIN_PASSWORD` are configured in Vercel, the build makes that account idempotently exist and keeps its profile role set to `admin`.
 
-After the migration is applied, run the bootstrap command once from a trusted machine, then remove the temporary credentials from your shell history and CI environment:
+After the migration is applied, either configure `ADMIN_EMAIL` and `ADMIN_PASSWORD` in Vercel or run the bootstrap command once from a trusted machine. Remove temporary credentials from shell history and CI after use:
 
 ```bash
 npm run bootstrap:admin -- admin@example.com '<temporary-password>' Admin User
 ```
+
+The script is idempotent: an existing account is promoted to admin. Manual runs change its password when one is supplied; the build-time path does not reset an existing password on every deployment.
 
 ## Verification
 

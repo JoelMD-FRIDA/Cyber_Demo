@@ -503,6 +503,16 @@
     box-shadow: 0 18px 40px rgb(0 0 0 / 18%);
   }
 
+  .frida-auth-submit {
+    background: var(--frida-primary) !important;
+    color: #ffffff !important;
+    box-shadow: var(--stitch-shadow-card);
+  }
+
+  .frida-auth-submit:hover:not(:disabled) {
+    background: var(--frida-brand-hover) !important;
+  }
+
   .frida-auth-brand {
     display: flex;
     align-items: center;

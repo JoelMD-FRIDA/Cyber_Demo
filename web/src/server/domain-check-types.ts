@@ -15,6 +15,19 @@ export interface StructuredDomainCheckResult {
   hasDarknetResults: boolean;
   hasSoftwareResults: boolean;
   hasOpenPortsResults: boolean;
+  classifications?: CysmoClassificationCounts;
+  technicalScore?: number;
+  businessScore?: number;
+  technicalRating?: string;
+  businessRating?: string;
+}
+
+export interface CysmoClassificationCounts {
+  good: number;
+  neutral: number;
+  warning: number;
+  critical: number;
+  catastrophic: number;
 }
 
 export type CysmoReportState =

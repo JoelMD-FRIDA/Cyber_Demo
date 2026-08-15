@@ -1,5 +1,6 @@
 import type {
   CysmoDetailedReport,
+  CysmoClassificationCounts,
   CysmoPartialRating,
   CysmoReportMessage,
   CysmoReportScore,
@@ -49,6 +50,7 @@ export function mapCysmoResponseToStructuredResult(
   const numberOfServers = report ? getNumber(report['numberOfServers']) : undefined;
   const entrypointCount = report ? countEntrypoints(report['entrypoints']) : 0;
   const openPortProxyCount = numberOfServers ?? entrypointCount;
+  const classifications = getClassifications(report);
 
   return {
     resultsPWLeaks: passwordLeakCount,
@@ -60,6 +62,11 @@ export function mapCysmoResponseToStructuredResult(
     hasDarknetResults: leakSignals.length > 0 || passwordLeakCount > 0 || emailLeakCount > 0,
     hasSoftwareResults: softwareSignals.length > 0 || eolSoftwareCount > 0,
     hasOpenPortsResults: openPortProxyCount > 0,
+    classifications,
+    technicalScore: report ? getNumber(report['valueTech']) ?? getNumber(report['value']) : undefined,
+    businessScore: report ? getNumber(report['valueBusiness']) : undefined,
+    technicalRating: report ? getString(report['ratingScoreTermTech']) ?? getString(report['ratingTerm']) : undefined,
+    businessRating: report ? getString(report['ratingScoreTermBusiness']) : undefined,
   };
 }
 
@@ -71,6 +78,7 @@ export function parseCheckResponse(raw: Record<string, unknown>): {
   const report = selectReport(raw);
   const partialRatings = getPartialRatings(report);
   const signals = buildRatingSignals(partialRatings);
+  const classifications = getClassifications(report);
   const rich: DomainCheckResult = {
     ...raw,
     spf: {
@@ -96,8 +104,13 @@ export function parseCheckResponse(raw: Record<string, unknown>): {
       signals: filterSignals(signals, SOFTWARE_KEYWORDS),
     },
     cysmo: {
-      value: report ? getNumber(report['value']) : undefined,
-      ratingTerm: report ? getString(report['ratingTerm']) : undefined,
+      value: report ? getNumber(report['valueTech']) ?? getNumber(report['value']) : undefined,
+      valueTech: report ? getNumber(report['valueTech']) : undefined,
+      valueBusiness: report ? getNumber(report['valueBusiness']) : undefined,
+      ratingTerm: report ? getString(report['ratingScoreTermTech']) ?? getString(report['ratingTerm']) : undefined,
+      ratingTermTech: report ? getString(report['ratingScoreTermTech']) : undefined,
+      ratingTermBusiness: report ? getString(report['ratingScoreTermBusiness']) : undefined,
+      classifications,
       partialRatings,
       report,
       company: isRecord(raw['company']) ? raw['company'] : undefined,
@@ -143,6 +156,18 @@ function selectReport(raw: Record<string, unknown>): CysmoDetailedReport | undef
 function getPartialRatings(report: CysmoDetailedReport | undefined): readonly CysmoPartialRating[] {
   if (!report || !Array.isArray(report['partialRatings'])) return [];
   return report['partialRatings'].map(toPartialRating).filter(isDefined);
+}
+
+function getClassifications(report: CysmoDetailedReport | undefined): CysmoClassificationCounts | undefined {
+  if (!report || !isRecord(report['classifications'])) return undefined;
+  const classifications = report['classifications'];
+  return {
+    good: getCount(classifications['GOOD'] ?? classifications['good']),
+    neutral: getCount(classifications['NEUTRAL'] ?? classifications['neutral']),
+    warning: getCount(classifications['WARNING'] ?? classifications['warning']),
+    critical: getCount(classifications['CRITICAL'] ?? classifications['critical']),
+    catastrophic: getCount(classifications['CATASTROPHIC'] ?? classifications['catastrophic']),
+  };
 }
 
 function toPartialRating(value: unknown): CysmoPartialRating | undefined {
@@ -271,6 +296,10 @@ function isDefined<T>(value: T | undefined): value is T {
 
 function getNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function getCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
 function getString(value: unknown): string | undefined {

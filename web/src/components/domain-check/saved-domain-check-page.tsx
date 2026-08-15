@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { DomainCheckProgress } from "./domain-check-progress";
+import { DomainCheckStepper } from "./domain-check-stepper";
 import { buildViewModel, type SavedDomainCheck, type SavedDomainCheckResponse } from "./saved-domain-check-view-model";
 
 export function SavedDomainCheckPage({ checkId }: { checkId: string }) {
@@ -52,7 +54,7 @@ export function SavedDomainCheckPage({ checkId }: { checkId: string }) {
     URL.revokeObjectURL(url);
   }, [check, reportJson]);
 
-  if (loading) return <PageShell><StatusCard status="running" title={t("common.loading")} description={t("domain.processingHint")} /></PageShell>;
+  if (loading) return <PageShell><DomainCheckStepper currentStep={2} /><DomainCheckProgress title={t("common.loading")} description={t("domain.processingHint")} /></PageShell>;
   if (error || !check) return <PageShell><StatusCard status="failed" title={t("domain.checkNotFound")} description={error ?? t("domain.loadError")}><Link href="/dashboard/domain-check" className={cn(buttonVariants({ variant: "outline" }), "w-fit")}><RotateCcw className="size-4" />{t("domain.newCheck")}</Link></StatusCard></PageShell>;
 
   const isProcessing = check.status === "queued" || check.status === "running";
@@ -62,9 +64,10 @@ export function SavedDomainCheckPage({ checkId }: { checkId: string }) {
 
   return (
     <PageShell>
+      <DomainCheckStepper currentStep={isProcessing ? 2 : 3} />
       <div><p className="text-sm font-semibold text-[var(--stitch-primary)]">{t("domain.title")}</p><h1 className="mt-2 text-3xl font-bold tracking-tight">{title}</h1><p className="mt-2 text-sm text-muted-foreground">{t("domain.reportSubtitle", { provider: check.provider?.name ?? "—", category: check.category?.name ?? "—", date })}</p></div>
-      <div className="flex flex-wrap items-center gap-2"><Badge variant={check.status === "failed" ? "destructive" : "secondary"}>{t(`domain.${statusKey}`)}</Badge><Badge variant="outline">{t("domain.quota", { remaining: check.remainingChecks, maximum: check.maxChecks })}</Badge>{check.attemptCount > 0 && <Badge variant="outline">{t("domain.attempt", { count: check.attemptCount })}</Badge>}</div>
-      {isProcessing && <StatusCard status={check.status} title={check.status === "queued" ? t("domain.queuedTitle") : t("domain.runningTitle")} description={t("domain.processingHint")} />}
+      <div className="flex flex-wrap items-center gap-2"><Badge variant={check.status === "failed" ? "destructive" : "secondary"}>{t(`domain.${statusKey}`)}</Badge><Badge variant="outline">{t("domain.quota", { remaining: check.remainingChecks, maximum: check.maxChecks })}</Badge></div>
+      {isProcessing && <DomainCheckProgress check={check} title={check.status === "queued" ? t("domain.queuedTitle") : t("domain.runningTitle")} description={t("domain.processingHint")} />}
       {check.status === "failed" && <StatusCard status="failed" title={t("domain.failed")} description={check.errorMessage ?? t("domain.loadError")} />}
       {!isProcessing && check.status !== "failed" && viewModel && <>
         <div className="grid gap-3 md:grid-cols-4"><MetricCard label={t("domain.total")} value={viewModel.summary.totalChecks} /><MetricCard label={t("domain.passed")} value={viewModel.summary.passed} tone="success" /><MetricCard label={t("domain.warnings")} value={viewModel.summary.warnings} tone="warning" /><MetricCard label={t("domain.failedMetric")} value={viewModel.summary.failed} tone="danger" /></div>

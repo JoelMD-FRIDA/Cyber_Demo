@@ -53,4 +53,45 @@ describe("Cysmo provider adapter", () => {
     expect(job.externalJobId).toBe("company-2");
     expect(job.snapshot).toMatchObject({ unacknowledgedSubdomains: ["sub.example.com"] });
   });
+
+  it("recognizes alternate terminal states and a singular embedded report", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "token-1" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "company-3", reports: [{ id: "report-3", status: "processing" }] }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "token-2" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: "company-3",
+        report: { id: "report-3", status: "completed", partialRatings: [], numberOfServers: 1 },
+      }), { status: 200 }));
+
+    const { getProviderAdapter } = await import("./domain-check-cysmo");
+    const adapter = getProviderAdapter("cysmo")!;
+    const job = await adapter.start({ url: "example.com", providerKey: "cysmo" });
+    const result = await adapter.poll({
+      url: "example.com",
+      providerKey: "cysmo",
+      externalJobId: job.externalJobId,
+      externalReportId: job.externalReportId,
+    });
+
+    expect(result).toMatchObject({ status: "completed", externalReportId: "report-3" });
+  });
+
+  it("finishes immediately when the create response already contains a completed report", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "token-1" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: "company-4",
+        reports: [{ id: "report-4", state: "DONE", partialRatings: [] }],
+      }), { status: 201 }));
+
+    const { getProviderAdapter } = await import("./domain-check-cysmo");
+    const job = await getProviderAdapter("cysmo")!.start({ url: "example.com", providerKey: "cysmo" });
+
+    expect(job).toMatchObject({ completed: true, externalJobId: "company-4", externalReportId: "report-4" });
+  });
 });

@@ -13,6 +13,7 @@ describe('buildViewModel', () => {
       remainingChecks: 86,
       maxChecks: 100,
       attemptCount: 1,
+      externalJobId: null,
       errorCode: null,
       errorMessage: null,
       rawResult: {

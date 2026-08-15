@@ -244,6 +244,23 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
     } catch (error) {
       return scheduleRetryOrFail(admin, row, 'PROVIDER_START_FAILED', error instanceof Error ? error.message : String(error));
     }
+
+    if (started.completed) {
+      const normalized = adapter.normalize(started.snapshot);
+      await updateCheck(admin, row.id, {
+        external_job_id: started.externalJobId,
+        external_report_id: started.externalReportId ?? null,
+        status: 'completed',
+        raw_result: normalized.richResult as Json,
+        structured_result: normalized.structuredResult as unknown as Json,
+        last_error_code: null,
+        last_error_message: null,
+        lease_until: null,
+        completed_at: new Date().toISOString(),
+      });
+      return 'completed';
+    }
+
     await updateCheck(admin, row.id, {
       external_job_id: started.externalJobId,
       external_report_id: started.externalReportId ?? null,

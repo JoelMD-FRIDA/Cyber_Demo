@@ -513,6 +513,12 @@
     border-bottom: 1px solid var(--frida-border-default);
     padding: 16px;
   }
+
+  .frida-progress-shine {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 20%, rgb(255 255 255 / 35%) 50%, transparent 80%);
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -547,6 +553,15 @@
     }
   }
 
+  @keyframes fridaProgressShine {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
   .animate-fadeIn {
     animation: fadeIn 300ms ease-out forwards;
   }
@@ -557,6 +572,10 @@
 
   .animate-slideUp {
     animation: slideUp 500ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  }
+
+  .frida-progress-shine {
+    animation: fridaProgressShine 1.8s ease-in-out infinite;
   }
 }
 

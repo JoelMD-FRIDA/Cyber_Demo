@@ -21,6 +21,7 @@ export interface SavedDomainCheck {
   remainingChecks: number;
   maxChecks: number;
   attemptCount: number;
+  externalJobId: string | null;
   errorCode: string | null;
   errorMessage: string | null;
   rawResult: Record<string, unknown> | null;

@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     let email = identifier.toLowerCase();
     if (!identifier.includes('@')) {
       const admin = createSupabaseAdminClient();
-      const { data: profile, error } = await admin.from('profiles').select('email').eq('username', identifier).maybeSingle();
+      const { data: profile, error } = await admin.from('profiles').select('email').eq('username', identifier.toLowerCase()).maybeSingle();
       if (error || !profile) throw new ApiError('UNAUTHORIZED', 'Invalid email/username or password.', 401);
       email = profile.email;
     }

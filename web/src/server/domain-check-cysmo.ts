@@ -19,6 +19,7 @@ export interface ProviderJob {
   readonly externalJobId: string;
   readonly externalReportId?: string;
   readonly snapshot: Record<string, unknown>;
+  readonly completed?: boolean;
 }
 
 export type ProviderPollResult =
@@ -105,12 +106,15 @@ class CysmoProvider implements DomainCheckProvider {
     }
 
     const reportId = findReportId(response.body);
+    const report = findReadyReport(response.body);
     return {
       externalJobId: companyId,
       externalReportId: reportId,
+      completed: Boolean(report),
       snapshot: {
         domain,
         createResponse: response.body,
+        report,
         unacknowledgedSubdomains: getUnacknowledgedSubdomains(response.body),
       },
     };
@@ -148,7 +152,7 @@ class CysmoProvider implements DomainCheckProvider {
         unacknowledgedSubdomains: getUnacknowledgedSubdomains(body),
       };
 
-      if (!report || !isReportReady(report)) {
+      if (!report) {
         return { status: 'pending', snapshot, externalReportId: reportId };
       }
 
@@ -210,21 +214,54 @@ function getCompanyId(body: unknown, headers: Headers): string | undefined {
 }
 
 function getReports(body: unknown): readonly Record<string, unknown>[] {
-  const company = isRecord(body) && isRecord(body.company) ? body.company : body;
-  if (!isRecord(company) || !Array.isArray(company.reports)) return [];
-  return company.reports.filter(isRecord);
+  const reports: Record<string, unknown>[] = [];
+
+  function collect(value: unknown): void {
+    if (!isRecord(value)) return;
+    if (Array.isArray(value.reports)) reports.push(...value.reports.filter(isRecord));
+    if (isRecord(value.report)) reports.push(value.report);
+    if (isRecord(value.company)) collect(value.company);
+    if (isRecord(value.data)) collect(value.data);
+  }
+
+  collect(body);
+  return reports;
 }
 
 function findReportId(body: unknown): string | undefined {
+  if (isRecord(body)) {
+    for (const key of ['reportId', 'report_id']) {
+      const directId = getString(body[key]);
+      if (directId) return directId;
+    }
+  }
+
   return getReports(body).map((report) => getString(report.id)).find((id): id is string => Boolean(id));
 }
 
 function findReadyReport(body: unknown): Record<string, unknown> | undefined {
-  return getReports(body).find(isReportReady);
+  const readyReport = getReports(body).find(isReportReady);
+  if (readyReport) return readyReport;
+
+  if (isRecord(body) && !Array.isArray(body.reports) && isReportReady(body)) {
+    return body;
+  }
+
+  return undefined;
 }
 
 function isReportReady(report: Record<string, unknown>): boolean {
-  return report.running === false || report.state === 'FINISHED' || report.finished === true;
+  const state = getString(report.state) ?? getString(report.status) ?? getString(report.reportState) ?? getString(report.reportStatus);
+  const normalizedState = state?.trim().toUpperCase().replace(/[-\s]+/g, '_');
+  if (normalizedState && ['ERROR', 'FAILED', 'FAILURE', 'INTERNAL_ERROR', 'TIMEOUT', 'CANCELLED', 'CANCELED'].includes(normalizedState)) {
+    return false;
+  }
+
+  if (normalizedState && ['FINISHED', 'COMPLETED', 'COMPLETE', 'DONE', 'SUCCESS', 'SUCCEEDED', 'READY'].includes(normalizedState)) {
+    return true;
+  }
+
+  return report.running === false || report.finished === true || report.complete === true || report.completed === true || report.ready === true;
 }
 
 function isUnacknowledgedSubdomainsError(body: unknown): boolean {

@@ -44,6 +44,8 @@ export default function DomainCheckForm() {
   }, [dispatch, locale, state.optionsLoading, state.providers.length, t]);
 
   const configuredProviders = state.providers.filter((provider) => provider.isConfigured);
+  const selectedProvider = state.providers.find((provider) => provider.id === state.providerId);
+  const isContactProvider = selectedProvider?.inputType === "contact";
   const canSubmit = Boolean(state.url.trim() && state.providerId && state.categoryId && state.hasAcceptedDisclaimer && configuredProviders.length && (state.remainingChecks ?? 1) > 0);
 
   return (
@@ -59,8 +61,8 @@ export default function DomainCheckForm() {
           {state.optionsLoading ? <div className="rounded-lg bg-muted px-3 py-4 text-sm text-muted-foreground">{t("common.loading")}</div> : (
             <>
               <div className="space-y-2">
-                <label htmlFor="domain-url" className="text-sm font-semibold">{t("domain.url")}</label>
-                <Input id="domain-url" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={t("domain.urlHint")} value={state.url} onChange={(event) => dispatch({ type: "SET_URL", payload: event.target.value })} className={fieldClass} required />
+                <label htmlFor="domain-url" className="text-sm font-semibold">{isContactProvider ? t("domain.contact") : t("domain.url")}</label>
+                <Input id="domain-url" type="text" inputMode={isContactProvider ? "email" : "url"} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={isContactProvider ? t("domain.contactHint") : t("domain.urlHint")} value={state.url} onChange={(event) => dispatch({ type: "SET_URL", payload: event.target.value })} className={fieldClass} required />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

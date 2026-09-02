@@ -1,42 +1,22 @@
 import { fetchCysmoJson, formatResponseBody } from './domain-check-cysmo-http';
 import { normalizeDomainName } from './domain-check-url';
 import { parseCheckResponse } from './domain-check-results';
-import type { StructuredDomainCheckResult } from './domain-check-types';
+import { pantaProvider } from './domain-check-panta';
+import type {
+  DomainCheckProvider,
+  ProviderJob,
+  ProviderPollInput,
+  ProviderPollResult,
+  ProviderStartInput,
+} from './domain-check-provider';
 
-export interface ProviderStartInput {
-  readonly url: string;
-  readonly providerKey: string;
-}
-
-export interface ProviderPollInput {
-  readonly url: string;
-  readonly externalJobId: string;
-  readonly externalReportId?: string | null;
-  readonly providerKey: string;
-}
-
-export interface ProviderJob {
-  readonly externalJobId: string;
-  readonly externalReportId?: string;
-  readonly snapshot: Record<string, unknown>;
-  readonly completed?: boolean;
-}
-
-export type ProviderPollResult =
-  | { readonly status: 'pending'; readonly snapshot: Record<string, unknown>; readonly externalReportId?: string }
-  | { readonly status: 'completed'; readonly snapshot: Record<string, unknown>; readonly externalReportId?: string }
-  | { readonly status: 'failed'; readonly errorCode: string; readonly errorMessage: string; readonly snapshot?: Record<string, unknown> };
-
-export interface DomainCheckProvider {
-  readonly key: string;
-  readonly isConfigured: boolean;
-  start(input: ProviderStartInput): Promise<ProviderJob>;
-  poll(input: ProviderPollInput): Promise<ProviderPollResult>;
-  normalize(result: unknown): {
-    readonly structuredResult: StructuredDomainCheckResult;
-    readonly richResult: Record<string, unknown>;
-  };
-}
+export type {
+  DomainCheckProvider,
+  ProviderJob,
+  ProviderPollInput,
+  ProviderPollResult,
+  ProviderStartInput,
+} from './domain-check-provider';
 
 interface CysmoConfig {
   readonly apiBaseUrl: string;
@@ -80,6 +60,7 @@ async function getCysmoToken(config: CysmoConfig): Promise<string> {
 
 class CysmoProvider implements DomainCheckProvider {
   readonly key = 'cysmo';
+  readonly inputType = 'domain' as const;
   readonly isConfigured = getCysmoConfig() !== null;
 
   async start(input: ProviderStartInput): Promise<ProviderJob> {
@@ -174,9 +155,13 @@ class CysmoProvider implements DomainCheckProvider {
 }
 
 const cysmoProvider = new CysmoProvider();
+const providerAdapters = new Map<string, DomainCheckProvider>([
+  [cysmoProvider.key, cysmoProvider],
+  [pantaProvider.key, pantaProvider],
+]);
 
 export function getProviderAdapter(providerKey: string): DomainCheckProvider | null {
-  return providerKey === cysmoProvider.key ? cysmoProvider : null;
+  return providerAdapters.get(providerKey) ?? null;
 }
 
 export function isProviderConfigured(providerKey: string): boolean {

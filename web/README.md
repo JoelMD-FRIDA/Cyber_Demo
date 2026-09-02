@@ -23,7 +23,7 @@ Supabase Auth owns identity, Supabase Postgres stores the five application table
    npm run dev
    ```
 
-The first supported provider is Cysmo. Its credentials stay in Vercel environment variables and are selected by the `provider_key` stored in `domain_check_providers`.
+The supported providers are Cysmo for domain checks and PANTA CYBER for synchronous email/phone breach queries. Their credentials stay in Vercel environment variables and are selected by the `provider_key` stored in `domain_check_providers`.
 
 ## Environment
 
@@ -31,6 +31,7 @@ The required variables are documented in `.env.example`:
 
 - Supabase URL, anon key, and service-role key
 - Cysmo base URL, client ID, and client secret
+- PANTA API base URL and API key
 - `CRON_SECRET`, `DOMAIN_CHECK_MAX_PER_USER`, `NEXT_PUBLIC_BASE_URL`, and optional admin bootstrap credentials
 
 Supabase Auth handles confirmation, recovery, and reset emails. Configure custom SMTP and email templates in Supabase under Authentication settings. The application does not contain an SMTP client, email queue, email tables, or admin email-configuration screens.

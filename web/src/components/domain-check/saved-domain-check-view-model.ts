@@ -21,7 +21,7 @@ export interface SavedDomainCheck {
   id: string;
   url: string;
   status: 'queued' | 'running' | 'completed' | 'partial' | 'failed' | string;
-  provider: { id: string; key: string; name: string } | null;
+  provider: { id: string; key: string; name: string; inputType?: "domain" | "contact" } | null;
   category: { id: string; key: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -106,7 +106,7 @@ export function buildViewModel(check: SavedDomainCheck): {
     portMeasurementCount: hasOpenPortsMeasurement ? getNumber(ports?.openPorts) ?? structured.resultsOpenPorts : null,
     hasSoftwareMeasurement,
     unacknowledgedSubdomains: getStringArray(raw.unacknowledgedSubdomains) ?? getStringArray(cysmoRaw?.unacknowledgedSubdomains) ?? [],
-    findings: getFindings(leaks, software, structured),
+    findings: getFindings(leaks, software, structured, check.provider?.name ?? 'Provider'),
   };
 }
 
@@ -164,13 +164,13 @@ function sumClassifications(value: CysmoClassificationCounts): number {
   return value.good + value.neutral + value.warning + value.critical + value.catastrophic;
 }
 
-function getFindings(leaks: Record<string, unknown> | undefined, software: Record<string, unknown> | undefined, structured: StructuredResults): readonly Finding[] {
-  const signals = [...toFindings(leaks?.signals, 'Cysmo'), ...toFindings(software?.signals, 'Cysmo')];
+function getFindings(leaks: Record<string, unknown> | undefined, software: Record<string, unknown> | undefined, structured: StructuredResults, source: string): readonly Finding[] {
+  const signals = [...toFindings(leaks?.signals, source), ...toFindings(software?.signals, source)];
   if (signals.length > 0) return signals;
   const findings: Finding[] = [];
-  if (structured.resultsPWLeaks > 0) findings.push({ type: 'Password leaks', severity: 'high', description: `${structured.resultsPWLeaks} password leaks found.`, source: 'Cysmo' });
-  if (structured.resultsEmailLeaks > 0) findings.push({ type: 'Email leaks', severity: 'medium', description: `${structured.resultsEmailLeaks} email leaks found.`, source: 'Cysmo' });
-  if (structured.resultsEoLSoftware > 0) findings.push({ type: 'End-of-life software', severity: 'medium', description: `${structured.resultsEoLSoftware} outdated software indicators found.`, source: 'Cysmo' });
+  if (structured.resultsPWLeaks > 0) findings.push({ type: 'Password leaks', severity: 'high', description: `${structured.resultsPWLeaks} password leaks found.`, source });
+  if (structured.resultsEmailLeaks > 0) findings.push({ type: 'Email leaks', severity: 'medium', description: `${structured.resultsEmailLeaks} email leaks found.`, source });
+  if (structured.resultsEoLSoftware > 0) findings.push({ type: 'End-of-life software', severity: 'medium', description: `${structured.resultsEoLSoftware} outdated software indicators found.`, source });
   return findings;
 }
 

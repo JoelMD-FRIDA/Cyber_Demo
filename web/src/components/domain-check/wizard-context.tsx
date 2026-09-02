@@ -8,6 +8,7 @@ export interface Provider {
   id: string;
   key: string;
   name: string;
+  inputType: "domain" | "contact";
   isActive: boolean;
   isConfigured: boolean;
   description?: string | null;

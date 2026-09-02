@@ -48,9 +48,6 @@ export function AppSidebar({ userRole = null }: AppSidebarProps) {
           />
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
             <span className="text-[16px] font-semibold leading-6 text-[var(--stitch-primary)]">{t('nav.console')}</span>
-            <span className="text-[11px] font-semibold leading-4 text-[var(--stitch-on-surface-variant)]">
-              {t('nav.consoleSubtitle')}
-            </span>
           </div>
         </div>
       </SidebarHeader>

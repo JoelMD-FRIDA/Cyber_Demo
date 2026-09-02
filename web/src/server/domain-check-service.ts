@@ -3,6 +3,8 @@ import { requireUser } from '@/lib/auth/guards';
 import { ApiError } from '@/lib/api-errors';
 import { CURRENT_DISCLAIMER_VERSION, getCronBatchSize, getCronLeaseSeconds, getDomainCheckLimit, getDomainCheckPollIntervalMs } from '@/lib/domain-check/config';
 import { getProviderAdapter, isProviderConfigured } from './domain-check-cysmo';
+import { isValidPantaContact, normalizePantaContact } from './domain-check-panta';
+import { DomainCheckProviderError } from './domain-check-provider';
 import { isValidUrl, normalizeDomainName } from './domain-check-url';
 import type { StructuredDomainCheckResult } from './domain-check-types';
 import type { Database, Json } from '@/lib/supabase/types';
@@ -44,6 +46,7 @@ export async function getDomainCheckOptions() {
       name: provider.name,
       isActive: provider.is_active,
       isConfigured: isProviderConfigured(provider.provider_key),
+      inputType: getProviderAdapter(provider.provider_key)?.inputType ?? 'domain',
       websiteUrl: provider.website_url,
       description: provider.description,
       assetPath: provider.asset_path,
@@ -69,9 +72,6 @@ export async function createQueuedDomainCheck(input: {
   disclaimerVersion?: string;
 }) {
   const context = await requireUser();
-  if (!isValidUrl(input.url)) {
-    throw new ApiError('INVALID_INPUT', 'A valid HTTP or HTTPS URL is required.', 400);
-  }
   if (!input.hasAcceptedDisclaimer || input.disclaimerVersion !== CURRENT_DISCLAIMER_VERSION) {
     throw new ApiError('INVALID_INPUT', 'The current disclaimer must be accepted.', 400);
   }
@@ -88,6 +88,15 @@ export async function createQueuedDomainCheck(input: {
   if (!isProviderConfigured(provider.provider_key)) {
     throw new ApiError('PROVIDER_NOT_CONFIGURED', 'The selected provider is not configured.', 503);
   }
+  const adapter = getProviderAdapter(provider.provider_key);
+  if (!adapter) throw new ApiError('PROVIDER_NOT_CONFIGURED', 'The selected provider is not configured.', 503);
+  if (adapter.inputType === 'contact' && !isValidPantaContact(input.url)) {
+    throw new ApiError('INVALID_INPUT', 'A valid email address or international telephone number is required.', 400);
+  }
+  if (adapter.inputType === 'domain' && !isValidUrl(input.url)) {
+    throw new ApiError('INVALID_INPUT', 'A valid HTTP or HTTPS URL is required.', 400);
+  }
+  const normalizedInput = adapter.inputType === 'contact' ? normalizePantaContact(input.url) : normalizeDomainName(input.url);
 
   const { data: categories, error: categoriesError } = await context.supabase
     .from('domain_check_categories')
@@ -102,7 +111,7 @@ export async function createQueuedDomainCheck(input: {
     p_user_id: context.user.id,
     p_provider_id: provider.id,
     p_category_id: category.id,
-    p_url: normalizeDomainName(input.url),
+    p_url: normalizedInput,
     p_has_accepted_disclaimer: true,
     p_disclaimer_version: CURRENT_DISCLAIMER_VERSION,
     p_limit: getDomainCheckLimit(),
@@ -146,7 +155,7 @@ export async function getDomainCheck(id: string) {
 
   return {
     ...toPublicCheck(row),
-    provider: provider ? { id: provider.id, key: provider.provider_key, name: provider.name } : null,
+    provider: provider ? { id: provider.id, key: provider.provider_key, name: provider.name, inputType: getProviderAdapter(provider.provider_key)?.inputType ?? 'domain' } : null,
     category: category ? { id: category.id, key: category.category_key, name: category.name } : null,
   };
 }
@@ -242,7 +251,7 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
     try {
       started = await adapter.start({ url: row.url, providerKey: provider.provider_key });
     } catch (error) {
-      return scheduleRetryOrFail(admin, row, 'PROVIDER_START_FAILED', error instanceof Error ? error.message : String(error));
+      return handleProviderError(admin, row, error, 'PROVIDER_START_FAILED');
     }
 
     if (started.completed) {
@@ -281,7 +290,7 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
       externalReportId: row.external_report_id,
     });
   } catch (error) {
-    return scheduleRetryOrFail(admin, row, 'PROVIDER_POLL_FAILED', error instanceof Error ? error.message : String(error));
+    return handleProviderError(admin, row, error, 'PROVIDER_POLL_FAILED');
   }
 
   if (polled.status === 'pending') {
@@ -311,6 +320,19 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
     completed_at: new Date().toISOString(),
   });
   return 'completed';
+}
+
+async function handleProviderError(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  row: DomainCheckRow,
+  error: unknown,
+  fallbackCode: string,
+): Promise<'pending' | 'failed'> {
+  const providerError = error instanceof DomainCheckProviderError ? error : null;
+  const code = providerError?.code ?? fallbackCode;
+  const message = providerError?.message ?? (error instanceof Error ? error.message : String(error));
+  if (providerError && !providerError.retryable) return markCheckFailed(admin, row, code, message);
+  return scheduleRetryOrFail(admin, row, code, message);
 }
 
 async function scheduleRetryOrFail(

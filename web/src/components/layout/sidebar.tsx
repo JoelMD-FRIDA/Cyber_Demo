@@ -9,7 +9,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -55,11 +54,6 @@ export function AppSidebar({ userRole = null }: AppSidebarProps) {
       <SidebarContent className="py-[var(--stitch-space-md)]">
         {navGroups.map((group, groupIndex) => (
           <SidebarGroup key={groupIndex} className="px-[var(--frida-space-small)] py-[var(--frida-space-small)]">
-            {group.label && (
-              <SidebarGroupLabel className="h-auto px-[var(--frida-space-small)] pb-[var(--frida-space-small)] pt-0 text-xs font-bold uppercase tracking-wide text-[var(--stitch-on-surface-variant)]">
-                {t(group.label)}
-              </SidebarGroupLabel>
-            )}
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {

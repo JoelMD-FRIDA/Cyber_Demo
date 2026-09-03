@@ -1,14 +1,63 @@
 "use client";
 
 import { useEffect } from "react";
-import { GlobeIcon, Loader2Icon } from "lucide-react";
+import { CheckIcon, GlobeIcon, Loader2Icon } from "lucide-react";
 import { getApiErrorMessage, useI18n } from "@/lib/i18n";
 import { useWizard } from "@/components/domain-check/wizard-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 const fieldClass = "h-11 rounded-[var(--frida-radius-default)] border-[var(--frida-input-border)] bg-[var(--frida-surface)] px-3 text-sm shadow-[var(--frida-input-shadow)] focus-visible:border-[var(--frida-primary)] focus-visible:ring-0";
+const providerLogoSources: Record<string, string> = {
+  cysmo: "https://www.cysmo.de/fileadmin/public/Redaktion/Bilder/Logos/cysmo_logo_rgb_neg.svg",
+  panta: "https://static.wixstatic.com/media/7a6893_ea84018a2d5146609f9a986787aac59b~mv2.png/v1/fill/w_220,h_220,al_c,q_90,usm_0.66_1.00_0.01,enc_auto/Panta-Logo-Edited-White-NoText.png",
+};
+
+function ProviderCard({
+  provider,
+  selected,
+  onSelect,
+  configuredLabel,
+  unavailableLabel,
+}: {
+  provider: { id: string; key: string; name: string; isConfigured: boolean; assetPath?: string | null };
+  selected: boolean;
+  onSelect: () => void;
+  configuredLabel: string;
+  unavailableLabel: string;
+}) {
+  const logoSrc = provider.assetPath || providerLogoSources[provider.key];
+
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      disabled={!provider.isConfigured}
+      onClick={onSelect}
+      className={cn(
+        "flex min-h-24 items-center gap-3 rounded-[var(--frida-radius-default)] border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--frida-primary)]",
+        selected
+          ? "border-[var(--frida-primary)] bg-[var(--frida-primary)]/5 ring-1 ring-[var(--frida-primary)]"
+          : "border-[var(--frida-input-border)] bg-[var(--frida-surface)] hover:border-[var(--frida-primary)]/60 hover:bg-[var(--frida-app-background)]",
+        !provider.isConfigured && "cursor-not-allowed opacity-55 hover:border-[var(--frida-input-border)] hover:bg-[var(--frida-surface)]",
+      )}
+    >
+      <span className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-[#10233f] p-2.5">
+        {logoSrc ? <img src={logoSrc} alt="" className="max-h-full max-w-full object-contain" /> : <span className="text-lg font-bold text-white">{provider.name.slice(0, 1)}</span>}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-[var(--frida-header-text)]">{provider.name}</span>
+        <span className="mt-1 block text-xs text-muted-foreground">{provider.isConfigured ? configuredLabel : unavailableLabel}</span>
+      </span>
+      <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-[var(--frida-primary)] bg-[var(--frida-primary)] text-white" : "border-[var(--frida-border-default)]")}>
+        {selected && <CheckIcon className="size-3.5" aria-hidden="true" />}
+      </span>
+    </button>
+  );
+}
 
 export default function DomainCheckForm() {
   const { state, dispatch, runDomainCheck } = useWizard();
@@ -45,8 +94,9 @@ export default function DomainCheckForm() {
 
   const configuredProviders = state.providers.filter((provider) => provider.isConfigured);
   const selectedProvider = state.providers.find((provider) => provider.id === state.providerId);
+  const visibleProviders = state.providers.filter((provider) => provider.key === "cysmo" || provider.key === "panta");
   const isContactProvider = selectedProvider?.inputType === "contact";
-  const canSubmit = Boolean(state.url.trim() && state.providerId && state.categoryId && state.hasAcceptedDisclaimer && configuredProviders.length && (state.remainingChecks ?? 1) > 0);
+  const canSubmit = Boolean(state.url.trim() && selectedProvider?.isConfigured && state.hasAcceptedDisclaimer && configuredProviders.length && (state.remainingChecks ?? 1) > 0);
 
   return (
     <Card className="mx-auto w-full max-w-2xl rounded-[var(--frida-card-radius)] bg-[var(--frida-surface)] p-2 shadow-none ring-1 ring-[var(--frida-border)] sm:p-6">
@@ -56,7 +106,7 @@ export default function DomainCheckForm() {
         <CardDescription>{t("domain.subtitle")}</CardDescription>
       </CardHeader>
       <form onSubmit={(event) => { event.preventDefault(); void runDomainCheck(); }}>
-        <CardContent className="space-y-5 px-4 sm:px-6">
+        <CardContent className="space-y-5 px-4 pb-2 sm:px-6">
           {state.error && <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">{state.error}</div>}
           {state.optionsLoading ? <div className="rounded-lg bg-muted px-3 py-4 text-sm text-muted-foreground">{t("common.loading")}</div> : (
             <>
@@ -64,22 +114,21 @@ export default function DomainCheckForm() {
                 <label htmlFor="domain-url" className="text-sm font-semibold">{isContactProvider ? t("domain.contact") : t("domain.url")}</label>
                 <Input id="domain-url" type="text" inputMode={isContactProvider ? "email" : "url"} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={isContactProvider ? t("domain.contactHint") : t("domain.urlHint")} value={state.url} onChange={(event) => dispatch({ type: "SET_URL", payload: event.target.value })} className={fieldClass} required />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label htmlFor="domain-provider" className="text-sm font-semibold">{t("common.provider")}</label>
-                  <select id="domain-provider" value={state.providerId} onChange={(event) => dispatch({ type: "SET_PROVIDER", payload: event.target.value })} className={`w-full ${fieldClass}`} required>
-                    <option value="" disabled>{t("domain.selectProvider")}</option>
-                    {state.providers.map((provider) => <option key={provider.id} value={provider.id} disabled={!provider.isConfigured}>{provider.name}{provider.isConfigured ? "" : ` — ${t("common.notConfigured")}`}</option>)}
-                  </select>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-semibold">{t("common.provider")}</legend>
+                <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label={t("common.provider")}>
+                  {visibleProviders.map((provider) => (
+                    <ProviderCard
+                      key={provider.id}
+                      provider={provider}
+                      selected={state.providerId === provider.id}
+                      onSelect={() => dispatch({ type: "SET_PROVIDER", payload: provider.id })}
+                      configuredLabel={t("common.configured")}
+                      unavailableLabel={t("common.notConfigured")}
+                    />
+                  ))}
                 </div>
-                <div className="space-y-2">
-                  <label htmlFor="domain-category" className="text-sm font-semibold">{t("common.category")}</label>
-                  <select id="domain-category" value={state.categoryId} onChange={(event) => dispatch({ type: "SET_CATEGORY", payload: event.target.value })} className={`w-full ${fieldClass}`} required>
-                    <option value="" disabled>{t("domain.selectCategory")}</option>
-                    {state.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                  </select>
-                </div>
-              </div>
+              </fieldset>
               <div className="rounded-lg border border-[var(--frida-input-border)] bg-[var(--frida-app-background)] p-3 text-sm text-muted-foreground">
                 {t("domain.quota", { remaining: state.remainingChecks ?? 0, maximum: state.maxChecks ?? 0 })}
               </div>
@@ -90,7 +139,7 @@ export default function DomainCheckForm() {
             </>
           )}
         </CardContent>
-        <CardFooter className="px-4 pb-5 sm:px-6">
+        <CardFooter className="px-4 pb-5 pt-5 sm:px-6">
           <Button type="submit" className="h-11 w-full" disabled={!canSubmit || state.loading || state.optionsLoading}>
             {state.loading ? <><Loader2Icon className="size-4 animate-spin" />{t("domain.starting")}</> : t("domain.start")}
           </Button>

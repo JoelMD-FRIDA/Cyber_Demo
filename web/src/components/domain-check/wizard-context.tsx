@@ -12,6 +12,7 @@ export interface Provider {
   isActive: boolean;
   isConfigured: boolean;
   description?: string | null;
+  assetPath?: string | null;
 }
 
 export interface Category {
@@ -104,7 +105,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const { locale, t } = useI18n();
 
   const runDomainCheck = useCallback(async () => {
-    if (!state.url.trim() || !state.providerId || !state.categoryId || !state.hasAcceptedDisclaimer) {
+    if (!state.url.trim() || !state.providerId || !state.hasAcceptedDisclaimer) {
       dispatch({ type: "SET_ERROR", payload: t("domain.optionsError") });
       return;
     }
@@ -118,7 +119,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           url: state.url,
           providerId: state.providerId,
-          categoryId: state.categoryId,
+          categoryId: state.categoryId || undefined,
           hasAcceptedDisclaimer: state.hasAcceptedDisclaimer,
           disclaimerVersion: state.disclaimerVersion,
         }),

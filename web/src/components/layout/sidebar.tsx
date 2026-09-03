@@ -82,7 +82,7 @@ export function AppSidebar({ userRole = null }: AppSidebarProps) {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-[var(--stitch-outline-variant)]/70 px-[var(--frida-space-medium)] py-[var(--frida-space-medium)] group-data-[collapsible=icon]:px-0">
+      <SidebarFooter className="border-t border-[var(--stitch-outline-variant)]/70 px-[var(--frida-space-medium)] py-[var(--frida-space-medium)] md:min-h-[var(--frida-footer-height)] md:justify-center group-data-[collapsible=icon]:px-0">
         <div className="flex items-center gap-[var(--frida-space-small)] text-xs font-semibold text-[var(--stitch-on-surface-variant)] group-data-[collapsible=icon]:hidden">
           <span>v0.1.0</span>
         </div>

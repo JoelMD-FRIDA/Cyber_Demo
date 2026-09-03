@@ -100,6 +100,7 @@
   --frida-space-large: 24px;
   --frida-space-larger: 32px;
   --frida-space-largest: 48px;
+  --frida-footer-height: calc(var(--frida-logo-size) + (2 * var(--frida-space-large)) + 1px);
   --frida-content-max: 80rem;
   --frida-page-gutter: clamp(16px, 3vw, 32px);
   --frida-page-padding: clamp(24px, 4vw, 40px);

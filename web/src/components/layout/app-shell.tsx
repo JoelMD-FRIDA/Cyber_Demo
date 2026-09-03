@@ -89,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <SidebarProvider className="bg-[var(--frida-app-bg)]">
+    <SidebarProvider className="relative isolate bg-[var(--frida-app-bg)]">
       {hasAdminSidebar && <AppSidebar userRole={userRole} />}
       <div className="relative z-0 flex min-h-svh min-w-0 flex-1 flex-col bg-[var(--frida-app-bg)]">
         <Header
@@ -99,7 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           hasSidebar={hasAdminSidebar}
         />
         <main className="min-w-0 flex-1">{children}</main>
-        <footer className="border-t border-[var(--stitch-outline-variant)] bg-[var(--stitch-surface-container-lowest)] py-[var(--stitch-space-lg)] text-[var(--stitch-on-surface)]">
+        <footer className="relative z-0 border-t border-[var(--stitch-outline-variant)] bg-[var(--stitch-surface-container-lowest)] py-[var(--stitch-space-lg)] text-[var(--stitch-on-surface)]">
           <div className="container mx-auto flex flex-col items-center gap-[var(--frida-space-medium)] px-[var(--frida-space-medium)] sm:flex-row sm:justify-between sm:px-[var(--frida-space-large)]">
             <div className="flex items-center gap-3">
               <Image

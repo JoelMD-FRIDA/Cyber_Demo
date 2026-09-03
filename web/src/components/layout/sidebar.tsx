@@ -33,7 +33,7 @@ export function AppSidebar({ userRole = null }: AppSidebarProps) {
   return (
     <Sidebar
       collapsible="icon"
-      className="border-r border-[var(--stitch-outline-variant)]/70 bg-[var(--stitch-surface-container-lowest)] shadow-none"
+      className="z-40 border-r border-[var(--stitch-outline-variant)]/70 bg-[var(--stitch-surface-container-lowest)] shadow-none"
     >
       <SidebarHeader className="min-h-[var(--stitch-topbar-height)] justify-center border-b border-[var(--stitch-outline-variant)]/70 bg-[var(--stitch-surface-container-lowest)] px-0 py-[var(--stitch-space-sm)]">
         <div className="flex items-center gap-[var(--frida-space-small)] px-[var(--frida-space-medium)] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">

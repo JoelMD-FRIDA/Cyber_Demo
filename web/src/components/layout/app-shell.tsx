@@ -91,7 +91,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider className="bg-[var(--frida-app-bg)]">
       {hasAdminSidebar && <AppSidebar userRole={userRole} />}
-      <div className="flex min-w-0 flex-1 flex-col bg-[var(--frida-app-bg)]">
+      <div className="relative z-0 flex min-h-svh min-w-0 flex-1 flex-col bg-[var(--frida-app-bg)]">
         <Header
           userRole={userRole}
           userName={userName}

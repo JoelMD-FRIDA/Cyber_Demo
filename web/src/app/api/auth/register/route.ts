@@ -1,7 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseRouteClient } from '@/lib/supabase/route';
 import { ApiError, apiErrorResponse, type ApiErrorCode } from '@/lib/api-errors';
+
+type SupabaseAuthErrorLike = {
+  name?: unknown;
+  code?: unknown;
+  message?: unknown;
+  status?: unknown;
+};
+
+function toSupabaseAuthError(error: unknown): ApiError {
+  const authError = (error && typeof error === 'object' ? error : {}) as SupabaseAuthErrorLike;
+  const status = typeof authError.status === 'number' ? authError.status : undefined;
+  const name = typeof authError.name === 'string' ? authError.name : undefined;
+  const code = typeof authError.code === 'string' ? authError.code : undefined;
+  const message = typeof authError.message === 'string' ? authError.message : 'Unable to create the account.';
+
+  if ((status !== undefined && status >= 500) || name === 'AuthRetryableFetchError') {
+    console.error('Supabase Auth signup unavailable', { status, name, code });
+    return new ApiError(
+      'AUTH_PROVIDER_UNAVAILABLE',
+      'The registration service is temporarily unavailable. Please try again later.',
+      503,
+    );
+  }
+
+  return new ApiError('INVALID_INPUT', message, 400);
+}
+
+function copyCookies(from: NextResponse, to: NextResponse): void {
+  for (const cookie of from.cookies.getAll()) to.cookies.set(cookie);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,17 +64,23 @@ export async function POST(request: NextRequest) {
       if (existingUsername) throw new ApiError('CONFLICT', 'This username is already taken.', 409);
     }
 
-    const supabase = await createSupabaseServerClient();
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { firstname, lastname, username, company },
-      },
-    });
-    if (signUpError || !signUpData.user) {
-      throw new ApiError('INVALID_INPUT', signUpError?.message ?? 'Unable to create the account.', 400);
+    const { supabase, getResponse } = createSupabaseRouteClient(request);
+    let signUpData: Awaited<ReturnType<typeof supabase.auth.signUp>>['data'];
+    try {
+      const signUpResult = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { firstname, lastname, username, company },
+        },
+      });
+      if (signUpResult.error) throw toSupabaseAuthError(signUpResult.error);
+      signUpData = signUpResult.data;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw toSupabaseAuthError(error);
     }
+    if (!signUpData.user) throw new ApiError('INTERNAL_ERROR', 'Unable to create the account.', 500);
 
     try {
       if (registrationCode) {
@@ -64,12 +100,14 @@ export async function POST(request: NextRequest) {
       throw new ApiError(keyCode, message, 400);
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       message: signUpData.session
         ? 'Registration successful. You can now sign in.'
         : 'Registration successful. Please check your email to confirm your account.',
       confirmationRequired: !signUpData.session,
     }, { status: 201 });
+    copyCookies(getResponse(), response);
+    return response;
   } catch (error) {
     return apiErrorResponse(error);
   }

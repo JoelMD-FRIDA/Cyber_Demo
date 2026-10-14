@@ -75,19 +75,27 @@ async function grants(db) {
 async function tableCount(db) {return (await db.query("SELECT count(*)::int AS total FROM pg_tables WHERE schemaname='public'")).rows[0].total;}
 async function owner(db) {need(!['frida_domain_app','frida_domain_backup'].includes((await db.query('SELECT current_user AS name')).rows[0].name));}
 async function provision(db) {
- await owner(db);need(process.env.FRIDA_EMPTY_INSTALL==='true'&&await tableCount(db)===0);
- for(const [role,secret] of [['frida_domain_app',process.env.FRIDA_APP_DB_PASSWORD],['frida_domain_backup',process.env.FRIDA_BACKUP_DB_PASSWORD]]) {
-  need(secret&&secret.length>=24&&!secret.includes('\n'));
-  need((await db.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[role])).rowCount===0);
-  const statement=(await db.query("SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD %L',$1::text,$2::text)",[role,secret])).rows[0].format;
-  await db.query(statement);
- }
+ await owner(db);
+ const roles=[['frida_domain_app',process.env.FRIDA_APP_DB_PASSWORD],['frida_domain_backup',process.env.FRIDA_BACKUP_DB_PASSWORD]];
+ for(const [,secret] of roles)need(secret&&secret.length>=24&&!secret.includes('\n'));
+ await db.query('BEGIN');
+ try {
+  await db.query('SELECT pg_advisory_xact_lock($1)',[MIGRATION_LOCK]);
+  need(process.env.FRIDA_EMPTY_INSTALL==='true'&&await tableCount(db)===0);
+  for(const [role,secret] of roles) {
+   need((await db.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[role])).rowCount===0);
+   const statement=(await db.query("SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD %L',$1::text,$2::text)",[role,secret])).rows[0].format;
+   await db.query(statement);
+  }
+  await db.query('COMMIT');
+ }catch(error){await db.query('ROLLBACK');throw error;}
 }
 async function migrate(db) {
  await owner(db);
  await db.query('BEGIN');
  try {
   await db.query('SELECT pg_advisory_xact_lock($1)',[MIGRATION_LOCK]);
+  await db.query('SELECT pg_advisory_xact_lock($1)',[WRITE_LOCK]);
   const exists=(await db.query("SELECT to_regclass('public.frida_migrations') AS name")).rows[0].name;
   if(!exists) {
    need(command==='init'&&process.env.FRIDA_EMPTY_INSTALL==='true'&&await tableCount(db)===0,'Refusing to initialize a populated or unapproved target.');

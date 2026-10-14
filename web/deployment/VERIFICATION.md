@@ -56,3 +56,12 @@ Real central IdP SSO/group revocation, configured providers, off-server encrypte
 restore and actual rollout/rollback remain production acceptance requirements.
 No service installation, public route, DNS, firewall, running nginx/mail setting,
 repository setting, remote code or automatic deployment was changed.
+
+## Hosted container checks preparation
+
+The GitHub checks job now builds app/tools images and exercises readonly,
+non-root, network-disabled startup, liveness, unconfigured readiness and protected
+API/probe responses. These checks have not yet run remotely. Provisioning now
+creates both restricted roles transactionally, and migrations take the shared
+maintenance system's exclusive write lock in addition to their migration lock.
+The 15 disposable PostgreSQL/OIDC integration tests passed after this adjustment.

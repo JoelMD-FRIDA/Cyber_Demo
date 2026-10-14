@@ -35,6 +35,9 @@ jobs:
           npm run lint
           npm run check:env
           npm run build
+      - name: Build and exercise readonly app/tools containers
+        working-directory: web
+        run: bash scripts/check-containers.sh
   release:
     needs: checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'JoelMD-FRIDA/Cyber_Demo' && vars.FRIDA_INTEGRATION_READY == 'true'

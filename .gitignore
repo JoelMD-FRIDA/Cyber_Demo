@@ -22,3 +22,6 @@ extraction/
 !web/public/*.png
 !web/public/*.jpg
 !web/public/*.svg
+
+# Keep local tool dependencies out of the versioned deployment contract.
+web/deployment/node_modules/

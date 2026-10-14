@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from '@/lib/api-client';
 
 import { useEffect } from "react";
 import { CheckIcon, GlobeIcon, Loader2Icon } from "lucide-react";
@@ -68,7 +69,7 @@ export default function DomainCheckForm() {
     const controller = new AbortController();
     async function loadOptions() {
       try {
-        const response = await fetch("/api/domain-check/options", { cache: "no-store", signal: controller.signal });
+        const response = await apiFetch("/api/domain-check/options", { cache: "no-store", signal: controller.signal });
         const data = await response.json() as { providers?: unknown[]; categories?: unknown[]; remainingChecks?: number; maxChecks?: number; disclaimerVersion?: string; code?: string; error?: string };
         if (!response.ok || !Array.isArray(data.providers) || !Array.isArray(data.categories)) throw new Error(getApiErrorMessage(locale, data, t("domain.optionsError")));
         dispatch({

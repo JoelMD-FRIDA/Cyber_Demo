@@ -1,8 +1,9 @@
+import { jsonBody,optionalText } from '@/lib/request-body';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/guards';
 import { apiErrorResponse, ApiError } from '@/lib/api-errors';
 import { mapCategory } from '@/server/catalog';
-import type { Database } from '@/lib/supabase/types';
+import type { Database } from '@/lib/db/types';
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -21,11 +22,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { admin } = await requireAdmin();
     const { id } = await params;
-    const body = await request.json();
+    const body = await jsonBody(request);
     const values: Database['public']['Tables']['domain_check_categories']['Update'] = {};
     if (body.categoryKey !== undefined) values.category_key = String(body.categoryKey).trim().toLowerCase();
     if (body.name !== undefined) values.name = String(body.name).trim();
-    if (body.description !== undefined) values.description = body.description || null;
+    if (body.description !== undefined) values.description = optionalText(body.description);
     const { data, error } = await admin.from('domain_check_categories').update(values).eq('id', id).select('*').maybeSingle();
     if (error) throw new ApiError(error.code === '23505' ? 'CONFLICT' : 'INTERNAL_ERROR', error.message, error.code === '23505' ? 409 : 500);
     if (!data) throw new ApiError('NOT_FOUND', 'Category not found.', 404);

@@ -1,5 +1,5 @@
 import { getProviderAdapter } from './domain-check-cysmo';
-import type { Database } from '@/lib/supabase/types';
+import type { Database } from '@/lib/db/types';
 import { ApiError } from '@/lib/api-errors';
 
 type Provider = Database['public']['Tables']['domain_check_providers']['Row'];

@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api-client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -31,7 +32,7 @@ export default function AdminCategories() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/categories');
+      const response = await apiFetch('/api/admin/categories');
       const data = await response.json();
       if (!response.ok) throw new Error(getApiErrorMessage(locale, data, t('common.retry')));
       setCategories(data.categories ?? []);
@@ -48,7 +49,7 @@ export default function AdminCategories() {
   async function save(values: Record<string, unknown>) {
     setDialogLoading(true);
     try {
-      const response = await fetch(editing ? `/api/admin/categories/${editing.id}` : '/api/admin/categories', {
+      const response = await apiFetch(editing ? `/api/admin/categories/${editing.id}` : '/api/admin/categories', {
         method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values),
@@ -67,7 +68,7 @@ export default function AdminCategories() {
 
   async function remove(category: Category) {
     if (!window.confirm(`${t('common.delete')} ${category.name}?`)) return;
-    const response = await fetch(`/api/admin/categories/${category.id}`, { method: 'DELETE' });
+    const response = await apiFetch(`/api/admin/categories/${category.id}`, { method: 'DELETE' });
     const data = await response.json();
     if (!response.ok) setError(getApiErrorMessage(locale, data, t('common.retry')));
     else await load();
@@ -79,7 +80,7 @@ export default function AdminCategories() {
     setUploading(id);
     const form = new FormData();
     form.append('file', file);
-    const response = await fetch(`/api/admin/categories/${id}/asset`, { method: 'POST', body: form });
+    const response = await apiFetch(`/api/admin/categories/${id}/asset`, { method: 'POST', body: form });
     const data = await response.json();
     if (!response.ok) setError(getApiErrorMessage(locale, data, t('common.retry')));
     else await load();

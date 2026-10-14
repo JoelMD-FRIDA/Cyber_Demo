@@ -5,16 +5,24 @@
   "automatic_deployment": false,
   "legacy_migrations_directory": "supabase/migrations",
   "reviewed_migrations_directory": "deployment/migrations",
-  "reviewed_migrations": [],
-  "compatibility": null,
-  "tools_dockerfile": null,
+  "reviewed_migrations": [
+    {
+      "file": "20261014000000_fresh_postgres.sql",
+      "sha256": "389607b7b45a49cfb5ac50b92edab36665203f9f5ad346a6636977dd0be59f88"
+    }
+  ],
+  "compatibility": "additive",
+  "tools_dockerfile": "deployment/Dockerfile.tools",
   "acceptance": {
     "postgres_adapter_verified": false,
     "native_oidc_verified": false,
-    "asset_transfer_verified": false,
     "complete_bundle_restore_verified": false,
     "write_barrier_verified": false,
     "queue_safety_verified": false,
-    "dependency_readiness_verified": false
-  }
+    "dependency_readiness_verified": false,
+    "fresh_initialization_verified": false,
+    "persistent_assets_verified": false
+  },
+  "initialization": "fresh-empty",
+  "existing_data_transfer_required": false
 }

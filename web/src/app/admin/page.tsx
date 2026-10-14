@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api-client';
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,7 +24,7 @@ export default function AdminDashboard() {
   const { locale, t } = useI18n();
 
   useEffect(() => {
-    fetch('/api/admin/summary')
+    apiFetch('/api/admin/summary')
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(getApiErrorMessage(locale, data, t('common.retry')));

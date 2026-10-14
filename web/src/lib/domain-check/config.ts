@@ -6,11 +6,11 @@ export function getDomainCheckLimit(): number {
 export const CURRENT_DISCLAIMER_VERSION = '1.0';
 
 export function getCronBatchSize(): number {
-  return 5;
+  return 1;
 }
 
 export function getCronLeaseSeconds(): number {
-  return 45;
+  return 120;
 }
 
 export function getDomainCheckPollIntervalMs(): number {

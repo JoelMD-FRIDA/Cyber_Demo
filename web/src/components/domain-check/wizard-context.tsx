@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from '@/lib/api-client';
 
 import { createContext, useCallback, useContext, useReducer, type Dispatch, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -113,7 +114,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "SET_LOADING", payload: true });
     dispatch({ type: "SET_ERROR", payload: null });
     try {
-      const response = await fetch("/api/domain-check", {
+      const response = await apiFetch("/api/domain-check", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({

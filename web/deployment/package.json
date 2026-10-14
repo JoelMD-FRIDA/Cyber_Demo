@@ -1,0 +1,13 @@
+{
+  "name": "frida-domain-check-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "pg": "8.23.1",
+    "tar": "7.5.22"
+  }
+}

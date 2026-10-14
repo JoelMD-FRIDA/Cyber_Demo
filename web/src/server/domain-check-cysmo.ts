@@ -54,7 +54,7 @@ async function getCysmoToken(config: CysmoConfig): Promise<string> {
 class CysmoProvider implements DomainCheckProvider {
   readonly key = 'cysmo';
   readonly inputType = 'domain' as const;
-  readonly isConfigured = getCysmoConfig() !== null;
+  get isConfigured() { return getCysmoConfig() !== null; }
 
   async start(input: ProviderStartInput): Promise<ProviderJob> {
     const config = getCysmoConfig();

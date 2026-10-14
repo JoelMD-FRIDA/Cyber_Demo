@@ -1,4 +1,5 @@
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { createDatabaseClient } from '@/lib/db/client';
+import { withWriteLease } from '@/lib/db/postgres';
 import { requireUser } from '@/lib/auth/guards';
 import { ApiError } from '@/lib/api-errors';
 import { CURRENT_DISCLAIMER_VERSION, getCronBatchSize, getCronLeaseSeconds, getDomainCheckLimit, getDomainCheckPollIntervalMs } from '@/lib/domain-check/config';
@@ -7,7 +8,7 @@ import { isValidPantaContact, normalizePantaContact } from './domain-check-panta
 import { DomainCheckProviderError } from './domain-check-provider';
 import { isValidUrl, normalizeDomainName } from './domain-check-url';
 import type { StructuredDomainCheckResult } from './domain-check-types';
-import type { Database, Json } from '@/lib/supabase/types';
+import type { Database, Json } from '@/lib/db/types';
 
 type DomainCheckRow = Database['public']['Tables']['domain_checks']['Row'];
 
@@ -26,12 +27,12 @@ const DEFAULT_STRUCTURED_RESULT: StructuredDomainCheckResult = {
 export async function getDomainCheckOptions() {
   const context = await requireUser();
   const [{ data: providers, error: providersError }, { data: categories, error: categoriesError }] = await Promise.all([
-    context.supabase
+    context.db
       .from('domain_check_providers')
       .select('*')
       .eq('is_active', true)
       .order('name'),
-    context.supabase
+    context.db
       .from('domain_check_categories')
       .select('*')
       .order('name'),
@@ -76,7 +77,7 @@ export async function createQueuedDomainCheck(input: {
     throw new ApiError('INVALID_INPUT', 'The current disclaimer must be accepted.', 400);
   }
 
-  const { data: providers, error: providersError } = await context.supabase
+  const { data: providers, error: providersError } = await context.db
     .from('domain_check_providers')
     .select('*')
     .eq('is_active', true)
@@ -98,7 +99,7 @@ export async function createQueuedDomainCheck(input: {
   }
   const normalizedInput = adapter.inputType === 'contact' ? normalizePantaContact(input.url) : normalizeDomainName(input.url);
 
-  const { data: categories, error: categoriesError } = await context.supabase
+  const { data: categories, error: categoriesError } = await context.db
     .from('domain_check_categories')
     .select('*')
     .order('name');
@@ -106,7 +107,7 @@ export async function createQueuedDomainCheck(input: {
   const category = (categories ?? []).find((candidate) => candidate.id === input.categoryId) ?? categories?.[0];
   if (!category) throw new ApiError('NOT_FOUND', 'No category is available.', 404);
 
-  const admin = createSupabaseAdminClient();
+  const admin = createDatabaseClient();
   const { data, error } = await admin.rpc('create_queued_domain_check', {
     p_user_id: context.user.id,
     p_provider_id: provider.id,
@@ -138,7 +139,7 @@ export async function createQueuedDomainCheck(input: {
 
 export async function getDomainCheck(id: string) {
   const context = await requireUser();
-  const { data: row, error } = await context.supabase
+  const { data: row, error } = await context.db
     .from('domain_checks')
     .select('*')
     .eq('id', id)
@@ -149,8 +150,8 @@ export async function getDomainCheck(id: string) {
   if (!row) throw new ApiError('CHECK_NOT_FOUND', 'Domain check not found.', 404);
 
   const [{ data: provider }, { data: category }] = await Promise.all([
-    context.supabase.from('domain_check_providers').select('*').eq('id', row.provider_id).maybeSingle(),
-    context.supabase.from('domain_check_categories').select('*').eq('id', row.category_id).maybeSingle(),
+    context.db.from('domain_check_providers').select('*').eq('id', row.provider_id).maybeSingle(),
+    context.db.from('domain_check_categories').select('*').eq('id', row.category_id).maybeSingle(),
   ]);
 
   return {
@@ -167,7 +168,7 @@ export async function getDomainCheck(id: string) {
  */
 export async function processDomainCheckOnDemand(id: string): Promise<void> {
   const context = await requireUser();
-  const { data: ownedCheck, error: ownershipError } = await context.supabase
+  const { data: ownedCheck, error: ownershipError } = await context.db
     .from('domain_checks')
     .select('id')
     .eq('id', id)
@@ -177,7 +178,8 @@ export async function processDomainCheckOnDemand(id: string): Promise<void> {
   if (ownershipError) throw new ApiError('INTERNAL_ERROR', 'Unable to load the domain check.', 500);
   if (!ownedCheck) throw new ApiError('CHECK_NOT_FOUND', 'Domain check not found.', 404);
 
-  const admin = createSupabaseAdminClient();
+  return withWriteLease(async connection => {
+  const admin = createDatabaseClient(connection);
   const { data: claimed, error: claimError } = await admin.rpc('claim_domain_check', {
     p_check_id: id,
     p_lease_seconds: getCronLeaseSeconds(),
@@ -189,14 +191,16 @@ export async function processDomainCheckOnDemand(id: string): Promise<void> {
 
   try {
     await processClaimedCheck(admin, row as DomainCheckRow);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+  } catch {
+    const message = 'The worker could not complete this operation.';
     await markCheckFailed(admin, row as DomainCheckRow, 'WORKER_FAILED', message);
   }
+  });
 }
 
 export async function processDomainCheckQueue(): Promise<{ processed: number; pending: number; failed: number; errors: string[] }> {
-  const admin = createSupabaseAdminClient();
+  return withWriteLease(async connection => {
+  const admin = createDatabaseClient(connection);
   const { data: claimed, error } = await admin.rpc('claim_domain_checks', {
     p_limit: getCronBatchSize(),
     p_lease_seconds: getCronLeaseSeconds(),
@@ -210,17 +214,18 @@ export async function processDomainCheckQueue(): Promise<{ processed: number; pe
       if (outcome === 'completed' || outcome === 'partial') result.processed++;
       else if (outcome === 'pending') result.pending++;
       else result.failed++;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+    } catch {
+      const message = 'The worker could not complete this operation.';
       result.failed++;
       result.errors.push(message);
       await markCheckFailed(admin, row as DomainCheckRow, 'WORKER_FAILED', message);
     }
   }
   return result;
+  });
 }
 
-async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminClient>, row: DomainCheckRow): Promise<'completed' | 'partial' | 'pending' | 'failed'> {
+async function processClaimedCheck(admin: ReturnType<typeof createDatabaseClient>, row: DomainCheckRow): Promise<'completed' | 'partial' | 'pending' | 'failed'> {
   const { data: provider, error: providerError } = await admin
     .from('domain_check_providers')
     .select('*')
@@ -234,7 +239,7 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
   if (isExpired(row)) {
     const snapshot = asRecord(row.raw_result) ?? {};
     const normalized = adapter.normalize(snapshot);
-    await updateCheck(admin, row.id, {
+    await updateCheck(admin, row, {
       status: 'partial',
       raw_result: normalized.richResult as Json,
       structured_result: normalized.structuredResult as unknown as Json,
@@ -248,15 +253,17 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
 
   if (!row.external_job_id) {
     let started: Awaited<ReturnType<typeof adapter.start>>;
+    await updateCheck(admin,row,{ submission_started:true });
     try {
       started = await adapter.start({ url: row.url, providerKey: provider.provider_key });
-    } catch (error) {
-      return handleProviderError(admin, row, error, 'PROVIDER_START_FAILED');
+    } catch {
+      // A failed/uncertain submission must never be retried automatically.
+      return markCheckFailed(admin,row,'PROVIDER_SUBMISSION_UNKNOWN','The provider submission needs review.');
     }
 
     if (started.completed) {
       const normalized = adapter.normalize(started.snapshot);
-      await updateCheck(admin, row.id, {
+      await updateCheck(admin, row, {
         external_job_id: started.externalJobId,
         external_report_id: started.externalReportId ?? null,
         status: 'completed',
@@ -270,7 +277,7 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
       return 'completed';
     }
 
-    await updateCheck(admin, row.id, {
+    await updateCheck(admin, row, {
       external_job_id: started.externalJobId,
       external_report_id: started.externalReportId ?? null,
       raw_result: started.snapshot as Json,
@@ -294,7 +301,7 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
   }
 
   if (polled.status === 'pending') {
-    await updateCheck(admin, row.id, {
+    await updateCheck(admin, row, {
       status: 'queued',
       raw_result: polled.snapshot as Json,
       external_report_id: polled.externalReportId ?? row.external_report_id,
@@ -309,7 +316,7 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
   }
 
   const normalized = adapter.normalize(polled.snapshot);
-  await updateCheck(admin, row.id, {
+  await updateCheck(admin, row, {
     status: 'completed',
     raw_result: normalized.richResult as Json,
     structured_result: normalized.structuredResult as unknown as Json,
@@ -323,27 +330,27 @@ async function processClaimedCheck(admin: ReturnType<typeof createSupabaseAdminC
 }
 
 async function handleProviderError(
-  admin: ReturnType<typeof createSupabaseAdminClient>,
+  admin: ReturnType<typeof createDatabaseClient>,
   row: DomainCheckRow,
   error: unknown,
   fallbackCode: string,
 ): Promise<'pending' | 'failed'> {
   const providerError = error instanceof DomainCheckProviderError ? error : null;
   const code = providerError?.code ?? fallbackCode;
-  const message = providerError?.message ?? (error instanceof Error ? error.message : String(error));
+  const message = 'The provider could not complete this operation.';
   if (providerError && !providerError.retryable) return markCheckFailed(admin, row, code, message);
   return scheduleRetryOrFail(admin, row, code, message);
 }
 
 async function scheduleRetryOrFail(
-  admin: ReturnType<typeof createSupabaseAdminClient>,
+  admin: ReturnType<typeof createDatabaseClient>,
   row: DomainCheckRow,
   code: string,
   message: string,
   snapshot?: Record<string, unknown>,
 ): Promise<'pending' | 'failed'> {
   if (row.attempt_count >= 8) return markCheckFailed(admin, row, code, message, snapshot);
-  await updateCheck(admin, row.id, {
+  await updateCheck(admin, row, {
     status: 'queued',
     raw_result: (snapshot ?? row.raw_result) as Json | null,
     next_poll_at: new Date(Date.now() + Math.min(Math.max(row.attempt_count, 1) * getDomainCheckPollIntervalMs(), 60_000)).toISOString(),
@@ -359,13 +366,13 @@ function isExpired(row: DomainCheckRow): boolean {
 }
 
 async function markCheckFailed(
-  admin: ReturnType<typeof createSupabaseAdminClient>,
+  admin: ReturnType<typeof createDatabaseClient>,
   row: DomainCheckRow,
   code: string,
   message: string,
   snapshot?: Record<string, unknown>,
 ): Promise<'failed'> {
-  await updateCheck(admin, row.id, {
+  await updateCheck(admin, row, {
     status: 'failed',
     raw_result: (snapshot ?? row.raw_result) as Json | null,
     last_error_code: code,
@@ -377,12 +384,12 @@ async function markCheckFailed(
 }
 
 async function updateCheck(
-  admin: ReturnType<typeof createSupabaseAdminClient>,
-  id: string,
+  admin: ReturnType<typeof createDatabaseClient>,
+  row: DomainCheckRow,
   values: Database['public']['Tables']['domain_checks']['Update'],
 ) {
-  const { error } = await admin.from('domain_checks').update(values).eq('id', id);
-  if (error) throw new Error(error.message);
+  const { data,error } = await admin.from('domain_checks').update(values).eq('id',row.id).eq('claim_token',row.claim_token).gt('lease_until',new Date().toISOString()).select('*');
+  if (error || data?.length !== 1) throw new Error('Worker claim expired or changed.');
 }
 
 function toPublicCheck(row: DomainCheckRow) {

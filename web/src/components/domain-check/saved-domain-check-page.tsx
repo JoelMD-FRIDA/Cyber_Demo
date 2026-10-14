@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from '@/lib/api-client';
 
 import { AlertTriangle, Download, FileText, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
 import Link from "next/link";
@@ -23,7 +24,7 @@ export function SavedDomainCheckPage({ checkId }: { checkId: string }) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     async function load() {
       try {
-        const response = await fetch(`/api/domain-check/${checkId}`, { cache: "no-store", headers: { Accept: "application/json" } });
+        const response = await apiFetch(`/api/domain-check/${checkId}`, { method: "POST", cache: "no-store", headers: { Accept: "application/json" } });
         const payload = await response.json() as SavedDomainCheckResponse & { error?: string; code?: string };
         if (!response.ok || !payload.check) {
           if (!disposed) { setError(translateApiError(locale, payload.code, payload.error ?? t("domain.loadError"))); setLoading(false); }

@@ -14,7 +14,7 @@ describe('private deployment probes', () => {
     } finally { fetchMock.mockRestore(); }
   });
 
-  it('never admits the legacy Supabase revision as a ready PostgreSQL/SSO app', async () => {
+  it('does not admit an unconfigured PostgreSQL/SSO app', async () => {
     const response = await ready();
     expect(response.status).toBe(503);
     expect(response.headers.get('cache-control')).toBe('no-store');

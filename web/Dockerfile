@@ -11,6 +11,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json package-lock.json next.config.ts tsconfig.json postcss.config.mjs ./
 COPY src ./src
+COPY deployment/contract.json ./deployment/contract.json
 COPY public ./public
 # No credentials or database/provider access are supplied to this build.
 RUN npm run build

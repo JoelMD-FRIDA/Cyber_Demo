@@ -1,3 +1,4 @@
+import { jsonBody,optionalText } from '@/lib/request-body';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/guards';
 import { apiErrorResponse, ApiError } from '@/lib/api-errors';
@@ -17,7 +18,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const { admin } = await requireAdmin();
-    const body = await request.json();
+    const body = await jsonBody(request);
     const providerKey = typeof body.providerKey === 'string' ? body.providerKey.trim().toLowerCase() : '';
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!providerKey || !name) throw new ApiError('INVALID_INPUT', 'Provider key and name are required.');
@@ -26,11 +27,12 @@ export async function POST(request: NextRequest) {
       name,
       is_active: body.isActive !== false,
       website_url: validateOptionalUrl(body.websiteUrl),
-      description: body.description || null,
-      short_description: body.shortDescription || null,
-      long_description: body.longDescription || null,
+      description: optionalText(body.description),
+      short_description: optionalText(body.shortDescription),
+      long_description: optionalText(body.longDescription),
     }).select('*').single();
     if (error) throw new ApiError(error.code === '23505' ? 'CONFLICT' : 'INTERNAL_ERROR', error.message, error.code === '23505' ? 409 : 500);
+    if (!data) throw new ApiError('INTERNAL_ERROR','The catalog row was not created.',500);
     return NextResponse.json({ provider: mapProvider(data) }, { status: 201 });
   } catch (error) {
     return apiErrorResponse(error);

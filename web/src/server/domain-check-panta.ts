@@ -38,7 +38,7 @@ export function normalizePantaContact(value: string): string {
 class PantaProvider implements DomainCheckProvider {
   readonly key = 'panta';
   readonly inputType = 'contact' as const;
-  readonly isConfigured = getPantaConfig() !== null;
+  get isConfigured() { return getPantaConfig() !== null; }
 
   async start(input: ProviderStartInput): Promise<ProviderJob> {
     const config = getPantaConfig();

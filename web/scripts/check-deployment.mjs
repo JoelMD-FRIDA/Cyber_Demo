@@ -13,9 +13,11 @@ try {
   const contract = JSON.parse(readFileSync(resolve(root, 'deployment/contract.json'), 'utf8'));
   requireCondition(contract.schema === 1 && contract.id === 'frida-domain-check' &&
     contract.target === 'next-postgres', 'Wrong deployment contract.');
+  requireCondition(contract.initialization === 'fresh-empty' && contract.existing_data_transfer_required === false,
+    'This reviewed contract is for the explicitly selected fresh empty sandbox.');
   requireCondition(contract.automatic_deployment === true,
-    'Deployment disabled: PostgreSQL, central login and asset migration are incomplete.');
-  const checks = ['postgres_adapter_verified', 'native_oidc_verified', 'asset_transfer_verified',
+    'Deployment disabled: production integration acceptance is incomplete.');
+  const checks = ['postgres_adapter_verified', 'native_oidc_verified', 'fresh_initialization_verified', 'persistent_assets_verified',
     'complete_bundle_restore_verified', 'write_barrier_verified', 'queue_safety_verified',
     'dependency_readiness_verified'];
   for (const key of checks) requireCondition(contract.acceptance[key] === true, `Missing acceptance: ${key}`);

@@ -19,3 +19,8 @@ e2e
 .agent*
 .codex
 .history
+
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.example

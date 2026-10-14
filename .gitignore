@@ -10,6 +10,9 @@ node_modules/
 1TB/
 .mendix-cache/
 deployment/
+# Versioned server contract and migration tooling, separate from local deploy state.
+!web/deployment/
+!web/deployment/**
 extraction/
 *.png
 *.jpg

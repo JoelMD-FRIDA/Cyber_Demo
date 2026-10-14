@@ -10,7 +10,7 @@ The user explicitly selected an empty sandbox, with no existing data transfer.
 | Check | Result |
 | --- | --- |
 | Unit suite | 39 tests / 15 files pass |
-| Real PostgreSQL integration suite | 14 tests pass, temporary PostgreSQL 18.6 cluster and local TLS OIDC fixture |
+| Real PostgreSQL integration suite | 15 tests pass, temporary PostgreSQL 18.6 cluster and local TLS OIDC fixture |
 | Production build | Next 16.4.1 compilation, TypeScript and standalone output pass without credentials |
 | Lint | No errors; three image optimization warnings |
 | Environment example | All 19 source references covered |
@@ -28,6 +28,8 @@ audience/expiry/entitlement/replay/email-linking failures, and prove that staff/
 claims do not grant a local admin role. Browser cookie/bearer/CSRF boundaries,
 expired/disabled sessions, paid-job ambiguity/fencing, sanitized local images,
 positive/negative readiness and the narrow authenticated probe are exercised.
+Setup without provider keys remains ready with checks disabled; check creation is
+refused and does not consume quota.
 
 A consistent populated DB+image bundle is produced, validated and restored into a
 different empty isolated database. Image bytes match; login/session state is

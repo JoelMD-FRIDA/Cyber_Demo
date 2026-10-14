@@ -120,8 +120,10 @@ Keep unattended scheduling disabled until actual operational acceptance.
 
 `/api/health/live` has no dependencies. `/api/health/ready` validates configuration,
 OIDC discovery, runtime SQL role/schema checksum/required columns, maintenance
-state, writable asset storage and at least one active configured provider. It does
-not call a paid provider. Failure returns generic 503 within the readiness budget.
+state and writable asset storage. Provider keys can be added after setup:
+readiness reports `capabilities.checks=disabled` while the app remains available;
+unconfigured providers cannot create checks or consume quota. Missing DB/SSO/assets
+still returns generic 503 within the readiness budget. No paid provider is called.
 `/api/internal/deployment-probe` additionally checks its scoped credential/inactive
 probe identity and read access. The public limiter blocks internal/cron/health
 paths; private container/loopback monitoring remains available.

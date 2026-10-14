@@ -23,13 +23,13 @@ async function dependencies() {
     FROM profiles p LEFT JOIN domain_checks c ON c.user_id=p.id
     LEFT JOIN app_sessions s ON s.profile_id=p.id LEFT JOIN oidc_identities i ON i.profile_id=p.id LIMIT 0`);
   const providers=await sql('SELECT provider_key FROM domain_check_providers WHERE is_active');
-  if(!providers.rows.some(provider=>isProviderConfigured(provider.provider_key)))throw new Error('No configured provider.');
+  return providers.rows.some(provider=>isProviderConfigured(provider.provider_key));
 }
 export async function GET() {
   let timer:ReturnType<typeof setTimeout>|undefined;
   try {
-    await Promise.race([dependencies(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Readiness deadline.')),4500);})]);
-    return Response.json({status:'ready'},{headers:{'Cache-Control':'no-store'}});
+    const checksAvailable=await Promise.race([dependencies(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Readiness deadline.')),4500);})]);
+    return Response.json({status:'ready',capabilities:{checks:checksAvailable?'enabled':'disabled'}},{headers:{'Cache-Control':'no-store'}});
   } catch {
     return Response.json({status:'unavailable'},{status:503,headers:{'Cache-Control':'no-store'}});
   } finally {clearTimeout(timer);}

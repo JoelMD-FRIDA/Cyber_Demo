@@ -159,6 +159,18 @@ describe('fresh local PostgreSQL application',()=>{
   try {expect((await createDatabaseClient().from('profiles').update({company:'blocked'}).eq('id',profileA)).error).not.toBe(null);}
   finally{await owner.query('SELECT pg_advisory_unlock(734291861)');}
  });
+ it('allows setup without provider keys while refusing paid checks without consuming quota',async()=>{
+  const saved=process.env.PANTA_API_KEY;delete process.env.PANTA_API_KEY;
+  try {
+   const response=await ready();expect(response.status).toBe(200);
+   expect(await response.json()).toMatchObject({status:'ready',capabilities:{checks:'disabled'}});
+   requestState.cookie=sessionA.session;
+   const providerId=(await owner.query("SELECT id FROM domain_check_providers WHERE provider_key='panta'")).rows[0].id;
+   const before=(await owner.query('SELECT performed_domain_checks FROM profiles WHERE id=$1',[profileA])).rows[0].performed_domain_checks;
+   await expect(createQueuedDomainCheck({url:'person@example.test',providerId,hasAcceptedDisclaimer:true,disclaimerVersion:'1.0'})).rejects.toMatchObject({code:'PROVIDER_NOT_CONFIGURED'});
+   expect((await owner.query('SELECT performed_domain_checks FROM profiles WHERE id=$1',[profileA])).rows[0].performed_domain_checks).toBe(before);
+  }finally{if(saved===undefined)delete process.env.PANTA_API_KEY;else process.env.PANTA_API_KEY=saved;}
+ });
  it('makes a consistent DB/assets bundle and restores only to an empty different database',async()=>{
   const result=tool('backup',process.env.FRIDA_TEST_BACKUP_SERVICE);expect(result.status,result.stderr.toString()).toBe(0);bundle=result.stdout;
   expect(tool('verify',undefined,bundle).status).toBe(0);

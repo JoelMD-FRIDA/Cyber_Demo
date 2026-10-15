@@ -141,3 +141,18 @@ execution, real domain/SSO client and revocation, provider configuration, rootle
 network/resource enforcement, disk quota, encrypted off-server restore, actual
 readiness/smoke and compatible rollout/rollback evidence. This checkout does not
 activate routes, install services, publish images or change production data.
+
+## Temporary private acceptance images
+
+Same-repository checks for the fixed infrastructure review branch also export
+app/tools and the pinned PostgreSQL image into a two-day Actions artifact. The
+checkout and manifest bind the exact reviewed head commit and workflow run. No
+server credentials, environment files or database data enter the build/artifact.
+These are explicitly marked private-acceptance-only and cannot satisfy the
+main-release provenance or automatic-deployment contract. The operator must
+verify the canonical GitHub artifact digest, run and image contents before any
+offline loading; production acceptance flags remain false.
+
+The server migration disables future Vercel Git deployments in `web/vercel.json`
+using its documented `git.deploymentEnabled=false` setting. It does not delete
+an existing Vercel deployment or alter DNS. Production traffic cutover is separate.

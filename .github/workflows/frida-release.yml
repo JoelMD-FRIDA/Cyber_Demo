@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version: '24.21.0'
@@ -38,6 +39,21 @@ jobs:
       - name: Build and exercise readonly app/tools containers
         working-directory: web
         run: bash scripts/check-containers.sh
+      - name: Export temporary private-acceptance images
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/domain-check-infrastructure'
+        working-directory: web
+        env:
+          FRIDA_REVIEW_COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/export-acceptance-images.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/domain-check-infrastructure'
+        with:
+          name: frida-acceptance-images
+          path: web/.bootstrap-images/
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
   release:
     needs: checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'JoelMD-FRIDA/Cyber_Demo' && vars.FRIDA_INTEGRATION_READY == 'true'

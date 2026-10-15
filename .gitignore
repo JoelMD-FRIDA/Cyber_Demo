@@ -25,3 +25,5 @@ extraction/
 
 # Keep local tool dependencies out of the versioned deployment contract.
 web/deployment/node_modules/
+
+.bootstrap-images/

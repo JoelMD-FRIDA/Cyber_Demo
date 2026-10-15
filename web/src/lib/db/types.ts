@@ -13,6 +13,7 @@ export type Database = {
           company: string | null;
           role: 'admin' | 'user';
           performed_domain_checks: number;
+          enabled: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -83,6 +84,8 @@ export type Database = {
           attempt_count: number;
           next_poll_at: string | null;
           lease_until: string | null;
+          claim_token: string | null;
+          submission_started: boolean;
           last_error_code: string | null;
           last_error_message: string | null;
           has_accepted_disclaimer: boolean;

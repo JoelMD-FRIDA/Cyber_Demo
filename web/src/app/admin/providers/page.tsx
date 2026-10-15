@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api-client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -46,7 +47,7 @@ export default function AdminProviders() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/providers');
+      const response = await apiFetch('/api/admin/providers');
       const data = await response.json();
       if (!response.ok) throw new Error(getApiErrorMessage(locale, data, t('common.retry')));
       setProviders(data.providers ?? []);
@@ -63,7 +64,7 @@ export default function AdminProviders() {
   async function save(values: Record<string, unknown>) {
     setDialogLoading(true);
     try {
-      const response = await fetch(editing ? `/api/admin/providers/${editing.id}` : '/api/admin/providers', {
+      const response = await apiFetch(editing ? `/api/admin/providers/${editing.id}` : '/api/admin/providers', {
         method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...values, isActive: values.isActive !== 'false' }),
@@ -82,7 +83,7 @@ export default function AdminProviders() {
 
   async function remove(provider: Provider) {
     if (!window.confirm(`${t('common.delete')} ${provider.name}?`)) return;
-    const response = await fetch(`/api/admin/providers/${provider.id}`, { method: 'DELETE' });
+    const response = await apiFetch(`/api/admin/providers/${provider.id}`, { method: 'DELETE' });
     const data = await response.json();
     if (!response.ok) setError(getApiErrorMessage(locale, data, t('common.retry')));
     else await load();
@@ -94,7 +95,7 @@ export default function AdminProviders() {
     setUploading(id);
     const form = new FormData();
     form.append('file', file);
-    const response = await fetch(`/api/admin/providers/${id}/asset`, { method: 'POST', body: form });
+    const response = await apiFetch(`/api/admin/providers/${id}/asset`, { method: 'POST', body: form });
     const data = await response.json();
     if (!response.ok) setError(getApiErrorMessage(locale, data, t('common.retry')));
     else await load();

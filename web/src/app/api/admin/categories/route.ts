@@ -1,3 +1,4 @@
+import { jsonBody,optionalText } from '@/lib/request-body';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/guards';
 import { apiErrorResponse, ApiError } from '@/lib/api-errors';
@@ -17,16 +18,17 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const { admin } = await requireAdmin();
-    const body = await request.json();
+    const body = await jsonBody(request);
     const categoryKey = typeof body.categoryKey === 'string' ? body.categoryKey.trim().toLowerCase() : '';
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!categoryKey || !name) throw new ApiError('INVALID_INPUT', 'Category key and name are required.');
     const { data, error } = await admin.from('domain_check_categories').insert({
       category_key: categoryKey,
       name,
-      description: body.description || null,
+      description: optionalText(body.description),
     }).select('*').single();
     if (error) throw new ApiError(error.code === '23505' ? 'CONFLICT' : 'INTERNAL_ERROR', error.message, error.code === '23505' ? 409 : 500);
+    if (!data) throw new ApiError('INTERNAL_ERROR','The catalog row was not created.',500);
     return NextResponse.json({ category: mapCategory(data) }, { status: 201 });
   } catch (error) {
     return apiErrorResponse(error);

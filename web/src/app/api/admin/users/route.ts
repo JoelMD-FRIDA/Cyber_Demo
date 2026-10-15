@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/guards';
-import { apiErrorResponse, ApiError } from '@/lib/api-errors';
+import { apiErrorResponse } from '@/lib/api-errors';
 
 function mapUser(profile: Record<string, unknown>) {
   return {
@@ -35,37 +35,4 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const { admin } = await requireAdmin();
-    const body = await request.json();
-    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-    const password = typeof body.password === 'string' ? body.password : '';
-    if (!email || !password) throw new ApiError('INVALID_INPUT', 'Email and password are required.');
-    if (!['admin', 'user'].includes(body.role ?? 'user')) throw new ApiError('INVALID_INPUT', 'Role must be admin or user.');
-
-    const { data: created, error: createError } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        firstname: body.firstname || null,
-        lastname: body.lastname || null,
-        username: typeof body.username === 'string' && body.username.trim() ? body.username.trim().toLowerCase() : null,
-        company: body.company || null,
-      },
-    });
-    if (createError || !created.user) throw new ApiError(createError?.code === 'email_exists' ? 'CONFLICT' : 'INVALID_INPUT', createError?.message ?? 'Unable to create the user.', createError?.code === 'email_exists' ? 409 : 400);
-
-    const { data: profile, error: profileError } = await admin
-      .from('profiles')
-      .update({ role: body.role ?? 'user' })
-      .eq('id', created.user.id)
-      .select('*')
-      .single();
-    if (profileError || !profile) throw new Error(profileError?.message ?? 'Unable to create the user profile.');
-    return NextResponse.json({ user: mapUser(profile as unknown as Record<string, unknown>) }, { status: 201 });
-  } catch (error) {
-    return apiErrorResponse(error);
-  }
-}
+export async function POST() { return NextResponse.json({ error:'Accounts are created through central sign-in.' },{ status:410 }); }

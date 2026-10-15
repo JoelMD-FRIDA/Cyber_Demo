@@ -1,60 +1,32 @@
-import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAnonKey, getSupabaseUrl } from '@/lib/supabase/env';
+import { SESSION_COOKIE, CSRF_COOKIE, sessionForCookie, appOrigin, hash, equal } from '@/lib/auth/session';
 
-const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/auth/callback', '/impressum', '/datenschutz', '/unauthorized'];
-
+const PUBLIC = new Set(['/', '/login', '/api/auth/login', '/auth/callback', '/impressum', '/datenschutz', '/unauthorized', '/api/health/live', '/api/health/ready', '/api/auth/register']);
+const RETIRED = new Set(['/register', '/forgot-password', '/reset-password']);
 export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const isPublic = PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTES.some((route) => pathname.startsWith(`${route}/`));
-  if (isPublic) return refreshSession(request);
-
-  const isPrefetch = request.headers.get('next-router-prefetch') === '1' || request.headers.get('purpose') === 'prefetch';
-  if (isPrefetch) return NextResponse.next();
-
-  let response = NextResponse.next({ request });
-  const supabase = createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
-    cookies: {
-      getAll: () => request.cookies.getAll(),
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-      },
-    },
-  });
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
+  const path = request.nextUrl.pathname;
+  if (RETIRED.has(path)) return NextResponse.redirect(new URL('/login',appOrigin()));
+  if (PUBLIC.has(path) || path==='/api/cron/process-domain-checks' || path==='/api/internal/deployment-probe') return NextResponse.next();
+  // Static public assets carry no personal/business records.
+  if (/^\/(favicon\.ico|frida-logo\.svg|frida-icon\.png|logo\.png|icon-\d+\.png|apple-touch-icon\.png|robots\.txt)$/.test(path)) return NextResponse.next();
+  try {
+    const session = request.headers.has('authorization') ? null : await sessionForCookie(request.cookies.get(SESSION_COOKIE)?.value);
+    if (!session) {
+      if (path.startsWith('/api/')) return NextResponse.json({ code:'UNAUTHORIZED',error:'Authentication is required.' },{ status:401 });
+      const login = new URL('/login',appOrigin());login.searchParams.set('redirect',path+request.nextUrl.search);
+      return NextResponse.redirect(login);
+    }
+    if (path.startsWith('/admin') && session.profile.role!=='admin') return NextResponse.redirect(new URL('/unauthorized',appOrigin()));
+    if (!['GET','HEAD','OPTIONS'].includes(request.method)) {
+      const token = request.headers.get('x-frida-csrf');
+      if (request.headers.get('origin')!==appOrigin() || !equal(token,request.cookies.get(CSRF_COOKIE)?.value) || !token || !equal(hash(token),session.csrfHash))
+        return NextResponse.json({ code:'FORBIDDEN',error:'Request verification failed.' },{ status:403 });
+    }
+    const response=NextResponse.next();
+    if(path.startsWith('/api/')||path.startsWith('/auth/'))response.headers.set('Cache-Control','private, no-store');
+    return response;
+  } catch {
+    return NextResponse.json({ error:'Application is temporarily unavailable.' },{ status:503 });
   }
-
-  if (pathname.startsWith('/admin')) {
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
-    if (profile?.role !== 'admin') return NextResponse.redirect(new URL('/unauthorized', request.url));
-  }
-
-  return response;
 }
-
-async function refreshSession(request: NextRequest): Promise<NextResponse> {
-  let response = NextResponse.next({ request });
-  const supabase = createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
-    cookies: {
-      getAll: () => request.cookies.getAll(),
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-      },
-    },
-  });
-  await supabase.auth.getUser();
-  return response;
-}
-
-export const config = {
-  matcher: [{ source: '/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)' }],
-};
+export const config = { matcher: ['/((?!_next/static|_next/image).*)'] };

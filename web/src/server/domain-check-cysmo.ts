@@ -21,6 +21,7 @@ export type {
 
 interface CysmoConfig {
   readonly apiBaseUrl: string;
+  readonly tokenUrl: string;
   readonly clientId: string;
   readonly clientSecret: string;
 }
@@ -30,12 +31,12 @@ function getCysmoConfig(): CysmoConfig | null {
   const clientId = process.env.CYSMO_CLIENT_ID?.trim();
   const clientSecret = process.env.CYSMO_CLIENT_SECRET?.trim();
   if (!apiBaseUrl || !clientId || !clientSecret) return null;
-  return { apiBaseUrl, clientId, clientSecret };
+  const tokenUrl = process.env.CYSMO_TOKEN_URL?.trim() || `${apiBaseUrl.replace(/\/+$/, '')}/oauth/token`;
+  return { apiBaseUrl, tokenUrl, clientId, clientSecret };
 }
 
 async function getCysmoToken(config: CysmoConfig): Promise<string> {
-  const tokenUrl = `${config.apiBaseUrl.replace(/\/+$/, '')}/oauth/token`;
-  const response = await fetchProviderJson(tokenUrl, {
+  const response = await fetchProviderJson(config.tokenUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({

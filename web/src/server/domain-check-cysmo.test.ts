@@ -11,9 +11,24 @@ describe("Cysmo provider adapter", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.CYSMO_API_BASE_URL;
+    delete process.env.CYSMO_TOKEN_URL;
     delete process.env.CYSMO_CLIENT_ID;
     delete process.env.CYSMO_CLIENT_SECRET;
     vi.resetModules();
+  });
+
+  it("uses the explicit OAuth endpoint without redirecting credentials or changing the API host", async () => {
+    process.env.CYSMO_TOKEN_URL = 'https://login.cysmo.de/realms/cysmo/protocol/openid-connect/token';
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'company-token-test' }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { getProviderAdapter } = await import('./domain-check-cysmo');
+    await getProviderAdapter('cysmo')!.start({ url: 'example.com', providerKey: 'cysmo' });
+    expect(fetchMock.mock.calls[0][0]).toBe(process.env.CYSMO_TOKEN_URL);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', redirect: 'error' });
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.cysmo.de/v2/companies?acceptSubDomain=true&acceptNotReachable=true');
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ headers: { Authorization: 'Bearer token' }, redirect: 'error' });
   });
 
   it("starts a company operation and polls the embedded company response", async () => {

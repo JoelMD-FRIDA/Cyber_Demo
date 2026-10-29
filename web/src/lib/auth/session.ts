@@ -6,9 +6,17 @@ export const SESSION_COOKIE = '__Host-frida-domain-check';
 export const CSRF_COOKIE = '__Host-frida-domain-check-csrf';
 export const TRANSACTION_COOKIE = '__Host-frida-domain-check-oidc';
 export const SESSION_SECONDS = 60;
+// This binding permits reauthentication only; private APIs still require a live session.
+export const RENEWAL_COOKIE = '__Host-frida-domain-check-renew';
+export const RENEWAL_SECONDS = 3600;
+export const RENEWAL_COOKIE_SECONDS = 86400;
 export const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 export const opaque = () => randomBytes(32).toString('base64url');
 export const cookieOptions = { secure: true, httpOnly: true, sameSite: 'lax' as const, path: '/' };
+export type LoginMode = 'login' | 'silent' | 'interactive';
+export function transactionCookieName(state: string, mode: LoginMode = 'login') {
+  return `${TRANSACTION_COOKIE}-${mode}-${hash(state).slice(0,32)}`;
+}
 export function equal(a: string | undefined | null, b: string | undefined | null) {
   if (!a || !b) return false;
   const left = Buffer.from(a), right = Buffer.from(b);

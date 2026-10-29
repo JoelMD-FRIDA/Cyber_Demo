@@ -22,7 +22,7 @@ export default function ProfilePage() {
   useEffect(() => {
     const controller = new AbortController();
     apiFetch("/api/auth/me", { signal: controller.signal, cache: "no-store" }).then(async (response) => {
-      if (!response.ok) { router.push("/login"); return; }
+      if (!response.ok) { setError(t("domain.loadError")); return; }
       setUser(await response.json() as UserProfile);
     }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : t("domain.loadError")); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();

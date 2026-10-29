@@ -29,6 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const skipsSessionProbe =
       pathname === "/login" ||
+      pathname.startsWith("/auth/") ||
       pathname === "/register" ||
       pathname === "/forgot-password" ||
       pathname === "/reset-password" ||

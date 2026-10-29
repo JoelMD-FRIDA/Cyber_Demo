@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:session-browser": "node scripts/test-session-browser.mjs",
     "check:env": "node scripts/check-env-example.mjs",
     "check:deployment": "node scripts/check-deployment.mjs",
     "test:integration": "python3 scripts/test-postgres.py"

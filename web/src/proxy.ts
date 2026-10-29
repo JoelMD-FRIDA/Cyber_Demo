@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE, CSRF_COOKIE, sessionForCookie, appOrigin, hash, equal } from '@/lib/auth/session';
+import { SESSION_COOKIE, CSRF_COOKIE, RENEWAL_COOKIE, sessionForCookie, appOrigin, hash, equal } from '@/lib/auth/session';
+import { hasRenewalContext } from '@/lib/auth/oidc';
 
-const PUBLIC = new Set(['/', '/login', '/api/auth/login', '/auth/callback', '/impressum', '/datenschutz', '/unauthorized', '/api/health/live', '/api/health/ready', '/api/auth/register']);
+const PUBLIC = new Set(['/', '/login', '/api/auth/login', '/auth/callback', '/auth/renew/complete', '/impressum', '/datenschutz', '/unauthorized', '/api/health/live', '/api/health/ready', '/api/auth/register']);
+// These routes render empty client shells; their APIs still require current authorization.
+const RESUMABLE = new Set(['/dashboard/domain-check','/profile','/admin','/admin/categories','/admin/providers','/admin/registration-keys','/admin/users']);
 const RETIRED = new Set(['/register', '/forgot-password', '/reset-password']);
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -13,6 +16,10 @@ export async function proxy(request: NextRequest) {
     const session = request.headers.has('authorization') ? null : await sessionForCookie(request.cookies.get(SESSION_COOKIE)?.value);
     if (!session) {
       if (path.startsWith('/api/')) return NextResponse.json({ code:'UNAUTHORIZED',error:'Authentication is required.' },{ status:401 });
+      if ((RESUMABLE.has(path)||/^\/dashboard\/domain-check\/results\/[a-f0-9-]{36}$/.test(path)) &&
+          hasRenewalContext(request.cookies.get(RENEWAL_COOKIE)?.value)) {
+        const response=NextResponse.next();response.headers.set('Cache-Control','private, no-store');return response;
+      }
       const login = new URL('/login',appOrigin());login.searchParams.set('redirect',path+request.nextUrl.search);
       return NextResponse.redirect(login);
     }

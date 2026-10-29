@@ -9,7 +9,7 @@ import { NextRequest } from 'next/server';
 const requestState=vi.hoisted(()=>({cookie:'',authorization:''}));
 vi.mock('next/headers',()=>({cookies:async()=>({get:(name:string)=>name==='__Host-frida-domain-check'?{value:requestState.cookie}:undefined}),headers:async()=>new Headers(requestState.authorization?{authorization:requestState.authorization}:{})}));
 import { startLogin,finishLogin } from '@/lib/auth/oidc';
-import { SESSION_COOKIE,CSRF_COOKIE,sessionForCookie } from '@/lib/auth/session';
+import { SESSION_COOKIE,CSRF_COOKIE,RENEWAL_COOKIE,sessionForCookie,encrypt,decrypt } from '@/lib/auth/session';
 import { createDatabaseClient } from '@/lib/db/client';
 import { database } from '@/lib/db/postgres';
 import { requireAdmin } from '@/lib/auth/guards';
@@ -20,9 +20,11 @@ import { createQueuedDomainCheck,getDomainCheck,processDomainCheckOnDemand } fro
 import sharp from 'sharp';
 import { GET as ready } from '@/app/api/health/ready/route';
 import { GET as probe } from '@/app/api/internal/deployment-probe/route';
+import { GET as beginLogin } from '@/app/api/auth/login/route';
+import { GET as loginCallback } from '@/app/auth/callback/route';
 
 const grants=new Map<string,Record<string,unknown>>();
-let server:Server,issuer:string,owner:Client,sessionA:{session:string;csrf:string;returnPath:string},sessionB:typeof sessionA;
+let server:Server,issuer:string,owner:Client,sessionA:{session:string;csrf:string;returnPath:string;renewalCookie?:string},sessionB:typeof sessionA;
 let profileA:string,profileB:string,assetPath:string,bundle:Buffer;
 let workspace:string;
 async function connectService(path:string) {
@@ -83,10 +85,68 @@ describe('fresh local PostgreSQL application',()=>{
   await expect((await login('invalid-signature','invalid@example.test',{badSignature:true})).result).rejects.toThrow();
   expect((await owner.query('SELECT count(*)::int AS n FROM profiles')).rows[0].n).toBe(2);
  });
+ it('renews an expired session silently for the same person without extending the one-hour binding',async()=>{
+  await owner.query("UPDATE app_sessions SET expires_at=now()-interval '1 second' WHERE id_hash=$1",[createHash('sha256').update(sessionA.session).digest('hex')]);
+  expect(await sessionForCookie(sessionA.session)).toBe(null);
+  expect(await sessionForCookie(sessionA.renewalCookie)).toBe(null);
+  const flow=await startLogin('/dashboard/domain-check',{cookie:sessionA.renewalCookie});
+  expect(flow.url.searchParams.get('prompt')).toBe('none');
+  const code=randomUUID();grants.set(code,{subject:'person-a',email:'a@example.test',nonce:flow.url.searchParams.get('nonce'),challenge:flow.url.searchParams.get('code_challenge')});
+  const callback=new URL('https://domain.frida.test/auth/callback');callback.searchParams.set('code',code);callback.searchParams.set('state',flow.url.searchParams.get('state')!);
+  const renewed=await finishLogin(callback,flow.transaction);
+  expect(renewed.returnPath).toBe('/auth/renew/complete');expect(renewed.renewalCookie).toBeUndefined();
+  expect((await sessionForCookie(renewed.session))!.user.id).toBe(profileA);
+  sessionA={...renewed,renewalCookie:sessionA.renewalCookie};
+ });
+ it('silent renewal rejects another SSO identity, removed entitlement and expired/tampered bindings',async()=>{
+  for(const subject of ['person-b','removed-person']) {
+   const flow=await startLogin(null,{cookie:sessionA.renewalCookie});const code=randomUUID();
+   grants.set(code,{subject,email:subject==='person-b'?'b@example.test':'a@example.test',nonce:flow.url.searchParams.get('nonce'),challenge:flow.url.searchParams.get('code_challenge'),...(subject==='removed-person'?{claims:{groups:[]}}:{})});
+   const callback=new URL('https://domain.frida.test/auth/callback');callback.searchParams.set('code',code);callback.searchParams.set('state',flow.url.searchParams.get('state')!);
+   await expect(finishLogin(callback,flow.transaction)).rejects.toThrow();
+  }
+  const binding=JSON.parse(decrypt(sessionA.renewalCookie!));binding.expires=Date.now()-1;
+  await expect(startLogin(null,{cookie:encrypt(JSON.stringify(binding))})).rejects.toThrow();
+  await expect(startLogin(null,{cookie:'tampered'})).rejects.toThrow();
+  await expect(startLogin(null,{cookie:undefined})).rejects.toThrow();
+  const manual=await startLogin(null,{cookie:sessionA.renewalCookie,interactive:true});
+  expect(manual.url.searchParams.get('prompt')).toBe('login');
+ });
+ it('resumes only the public page shells after expiry, while private API access stays denied',async()=>{
+  const cookie=RENEWAL_COOKIE+'='+sessionA.renewalCookie;
+  for(const path of ['/dashboard/domain-check','/profile','/admin']) {
+   const response=await proxy(new NextRequest('https://domain.frida.test'+path,{headers:{cookie}}));
+   expect(response.headers.get('x-middleware-next')).toBe('1');expect(response.headers.get('location')).toBe(null);
+  }
+  const denied=await proxy(new NextRequest('https://domain.frida.test/api/domain-check/options',{headers:{cookie}}));
+  expect(denied.status).toBe(401);
+  const binding=JSON.parse(decrypt(sessionA.renewalCookie!));binding.expires=Date.now()-1000;
+  const manual=await startLogin(null,{cookie:encrypt(JSON.stringify(binding)),interactive:true});
+  expect(manual.url.searchParams.get('prompt')).toBe('login');
+  await expect(startLogin(null,{cookie:encrypt(JSON.stringify(binding))})).rejects.toThrow();
+ });
  it('consumes callback transactions once and never links another subject by matching email',async()=>{
   const flow=await login('collision','a@example.test');await expect(flow.result).rejects.toThrow();
   await expect(finishLogin(flow.callback,flow.transaction)).rejects.toThrow();
   expect((await owner.query('SELECT count(*)::int AS n FROM profiles')).rows[0].n).toBe(2);
+ });
+ it('completes simultaneous original browser sign-ins with independent callback cookies',async()=>{
+  const flows=await Promise.all([beginLogin(new NextRequest('https://domain.frida.test/api/auth/login?redirect=/profile',
+    {headers:{host:'domain.frida.test'}})),beginLogin(new NextRequest('https://domain.frida.test/api/auth/login?redirect=/profile',
+    {headers:{host:'domain.frida.test'}}))]);
+  const cookie=flows.flatMap(response=>response.cookies.getAll()).map(value=>value.name+'='+value.value).join('; ');
+  expect(new Set(flows.flatMap(response=>response.cookies.getAll()).map(value=>value.name)).size).toBe(2);
+  const callbacks=flows.map((flow,index)=>{
+   const url=new URL(flow.headers.get('location')!);const code=randomUUID();
+   grants.set(code,{subject:index===0?'person-a':'person-b',email:index===0?'a@example.test':'b@example.test',
+    nonce:url.searchParams.get('nonce'),challenge:url.searchParams.get('code_challenge')});
+   const callback=new URL('https://domain.frida.test/auth/callback');callback.searchParams.set('code',code);callback.searchParams.set('state',url.searchParams.get('state')!);
+   return loginCallback(new NextRequest(callback,{headers:{host:'domain.frida.test',cookie}}));
+  });
+  for(const response of await Promise.all(callbacks)) {
+   expect(response.headers.get('location')).toBe('https://domain.frida.test/profile');
+   expect(response.cookies.get(SESSION_COOKIE)?.value).toBeTruthy();
+  }
  });
  it('rejects cookie-plus-bearer bypass and cross-origin/missing-CSRF mutations',async()=>{
   const cookies=`${SESSION_COOKIE}=${sessionA.session}; ${CSRF_COOKIE}=${sessionA.csrf}`;

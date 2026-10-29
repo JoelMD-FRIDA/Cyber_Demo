@@ -128,6 +128,38 @@ still returns generic 503 within the readiness budget. No paid provider is calle
 probe identity and read access. The public limiter blocks internal/cron/health
 paths; private container/loopback monitoring remains available.
 
+## Session continuity
+
+Application authorization remains bounded to 60 seconds. Active Cyber pages
+renew silently with OIDC `prompt=none` and retry an API 401 once with newly read
+CSRF cookies. Renewal preserves the wizard input, provider selection, consent
+checkbox and current page. Denied renewal offers same-account sign-in in a popup;
+it does not force page navigation. Normal sign-in defaults to the check form.
+
+An encrypted, HTTP-only renewal binding ties reauthentication to the original
+issuer, subject and local profile for one hour. It never authorizes an API.
+Expired/disabled sessions and revoked entitlements remain denied. Manual sign-in
+in a popup requests fresh authentication and must return as the same account.
+No access, refresh or ID tokens are retained. Logout clears the renewal binding.
+Each login transaction now has its own state-derived cookie, so simultaneous
+tabs/sign-ins cannot overwrite another request's PKCE context.
+
+The confidential `frida-cyber-web` IdP client needs `consent_mode: implicit` for
+silent renewal. Preserve the existing client policy, scopes, PKCE and other
+clients. The server activation helper validates and installs this one setting.
+After this update, complete one fresh sign-in to issue the renewal cookie.
+
+Callback failures return a retryable login page or signal failed renewal to the
+existing page. Logs record only a fixed `FRIDA_LOGIN_FAILED` category without
+OAuth codes, tokens, emails or raw upstream errors.
+
+`npm run test:session-browser` exercises the real Cyber form/client in Chromium
+against disposable API/OIDC transports, including denied renewal, the 60-second
+boundary, CSRF retry, exactly one submission and simultaneous tabs. Install the
+Playwright browser first or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to a local
+Chromium executable. The PostgreSQL suite separately exercises real signed OIDC
+code exchanges, expired sessions and identity/entitlement rejection.
+
 ## Delivery and remaining production proof
 
 Credential-free CI includes unit tests, disposable PostgreSQL/OIDC/assets/restore

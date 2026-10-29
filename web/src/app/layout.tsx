@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
+import { SessionContinuity } from "@/components/session-continuity";
 import { I18nProvider } from "@/lib/i18n";
 import { cookies } from "next/headers";
 
@@ -33,6 +34,7 @@ export default async function RootLayout({
     <html lang={initialLocale}>
       <body className="flex min-h-screen flex-col">
         <I18nProvider initialLocale={initialLocale}>
+          <SessionContinuity />
           <AppShell>{children}</AppShell>
         </I18nProvider>
       </body>

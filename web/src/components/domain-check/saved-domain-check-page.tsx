@@ -1,4 +1,6 @@
 "use client";
+import { apiFetch } from '@/lib/api-client';
+import { SESSION_EVENT } from '@/lib/session-renewal';
 
 import { AlertTriangle, Download, FileText, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
 import Link from "next/link";
@@ -16,31 +18,43 @@ export function SavedDomainCheckPage({ checkId }: { checkId: string }) {
   const [check, setCheck] = useState<SavedDomainCheck | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [attempt,setAttempt]=useState(0);
   const { locale, t } = useI18n();
 
   useEffect(() => {
     let disposed = false;
+    let inFlight = false;
+    let awaitingSession = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     async function load() {
+      if(disposed||inFlight)return;
+      if(timer){clearTimeout(timer);timer=undefined;}
+      inFlight=true;
       try {
-        const response = await fetch(`/api/domain-check/${checkId}`, { cache: "no-store", headers: { Accept: "application/json" } });
+        const response = await apiFetch(`/api/domain-check/${checkId}`, { method: "POST", cache: "no-store", headers: { Accept: "application/json" } });
         const payload = await response.json() as SavedDomainCheckResponse & { error?: string; code?: string };
         if (!response.ok || !payload.check) {
+          awaitingSession=response.status===401;
           if (!disposed) { setError(translateApiError(locale, payload.code, payload.error ?? t("domain.loadError"))); setLoading(false); }
+          if(!disposed&&response.status>=500)timer=setTimeout(()=>void load(),5000);
           return;
         }
         if (disposed) return;
+        awaitingSession=false;
         setCheck(payload.check);
         setError(null);
         setLoading(false);
         if (payload.check.status === "queued" || payload.check.status === "running") timer = setTimeout(() => void load(), 3000);
       } catch {
         if (!disposed) { setError(t("domain.loadError")); setLoading(false); }
-      }
+        if(!disposed)timer=setTimeout(()=>void load(),5000);
+      } finally {inFlight=false;}
     }
+    const resumed=(event:Event)=>{if(awaitingSession&&(event as CustomEvent<{ready:boolean}>).detail.ready)void load();};
+    window.addEventListener(SESSION_EVENT,resumed);
     void load();
-    return () => { disposed = true; if (timer) clearTimeout(timer); };
-  }, [checkId, locale, t]);
+    return () => { disposed = true; if (timer) clearTimeout(timer);window.removeEventListener(SESSION_EVENT,resumed); };
+  }, [checkId, locale, t,attempt]);
 
   const viewModel = useMemo(() => check ? buildViewModel(check) : null, [check]);
   const reportJson = useMemo(() => check ? JSON.stringify(check, null, 2) : "", [check]);
@@ -55,7 +69,7 @@ export function SavedDomainCheckPage({ checkId }: { checkId: string }) {
   }, [check, reportJson]);
 
   if (loading) return <PageShell><DomainCheckStepper currentStep={2} /><DomainCheckProgress title={t("common.loading")} description={t("domain.processingHint")} /></PageShell>;
-  if (error || !check) return <PageShell><StatusCard status="failed" title={t("domain.checkNotFound")} description={error ?? t("domain.loadError")}><Link href="/dashboard/domain-check" className={cn(buttonVariants({ variant: "outline" }), "w-fit")}><RotateCcw className="size-4" />{t("domain.newCheck")}</Link></StatusCard></PageShell>;
+  if (!check) return <PageShell><StatusCard status="failed" title={t("domain.loadError")} description={error ?? t("domain.loadError")}><button type="button" onClick={()=>setAttempt(value=>value+1)} className={cn(buttonVariants({ variant: "outline" }), "w-fit")}><RotateCcw className="size-4" />{t("common.retry")}</button></StatusCard></PageShell>;
 
   const isProcessing = check.status === "queued" || check.status === "running";
   const statusKey = ["queued", "running", "completed", "partial", "failed"].includes(check.status) ? check.status : "failed";
@@ -64,6 +78,7 @@ export function SavedDomainCheckPage({ checkId }: { checkId: string }) {
 
   return (
     <PageShell>
+      {error&&<div role="status" className="rounded-lg border p-3 text-sm">{error} <button type="button" className="underline" onClick={()=>setAttempt(value=>value+1)}>{t("common.retry")}</button></div>}
       <DomainCheckStepper currentStep={isProcessing ? 2 : 3} />
       <div><p className="text-sm font-semibold text-[var(--stitch-primary)]">{t("domain.title")}</p><h1 className="mt-2 text-3xl font-bold tracking-tight">{title}</h1><p className="mt-2 text-sm text-muted-foreground">{t("domain.reportSubtitle", { provider: check.provider?.name ?? "—", category: check.category?.name ?? "—", date })}</p></div>
       <div className="flex flex-wrap items-center gap-2"><Badge variant={check.status === "failed" ? "destructive" : "secondary"}>{t(`domain.${statusKey}`)}</Badge><Badge variant="outline">{t("domain.quota", { remaining: check.remainingChecks, maximum: check.maxChecks })}</Badge></div>

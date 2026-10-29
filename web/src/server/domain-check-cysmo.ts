@@ -1,4 +1,5 @@
-import { fetchCysmoJson, formatResponseBody } from './domain-check-cysmo-http';
+import { fetchCysmoJson } from './domain-check-cysmo-http';
+import { fetchProviderJson } from './provider-http';
 import { normalizeDomainName } from './domain-check-url';
 import { parseCheckResponse } from './domain-check-results';
 import { pantaProvider } from './domain-check-panta';
@@ -20,6 +21,7 @@ export type {
 
 interface CysmoConfig {
   readonly apiBaseUrl: string;
+  readonly tokenUrl: string;
   readonly clientId: string;
   readonly clientSecret: string;
 }
@@ -29,12 +31,12 @@ function getCysmoConfig(): CysmoConfig | null {
   const clientId = process.env.CYSMO_CLIENT_ID?.trim();
   const clientSecret = process.env.CYSMO_CLIENT_SECRET?.trim();
   if (!apiBaseUrl || !clientId || !clientSecret) return null;
-  return { apiBaseUrl, clientId, clientSecret };
+  const tokenUrl = process.env.CYSMO_TOKEN_URL?.trim() || `${apiBaseUrl.replace(/\/+$/, '')}/oauth/token`;
+  return { apiBaseUrl, tokenUrl, clientId, clientSecret };
 }
 
 async function getCysmoToken(config: CysmoConfig): Promise<string> {
-  const tokenUrl = `${config.apiBaseUrl.replace(/\/+$/, '')}/oauth/token`;
-  const response = await fetch(tokenUrl, {
+  const response = await fetchProviderJson(config.tokenUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -42,18 +44,10 @@ async function getCysmoToken(config: CysmoConfig): Promise<string> {
       client_id: config.clientId,
       client_secret: config.clientSecret,
     }),
-  });
-
-  const body = await response.text();
-  let parsed: unknown = body;
-  try {
-    parsed = body ? JSON.parse(body) : null;
-  } catch {
-    // Preserve the text in the error below.
-  }
-
+  }, 15_000, 64 * 1024);
+  const parsed = response.body;
   if (!response.ok || !isRecord(parsed) || typeof parsed.access_token !== 'string') {
-    throw new Error(`Cysmo OAuth token request failed (${response.status}): ${formatUnknownBody(parsed)}`);
+    throw new Error(`Cysmo OAuth token request failed (${response.status}).`);
   }
   return parsed.access_token;
 }
@@ -61,7 +55,7 @@ async function getCysmoToken(config: CysmoConfig): Promise<string> {
 class CysmoProvider implements DomainCheckProvider {
   readonly key = 'cysmo';
   readonly inputType = 'domain' as const;
-  readonly isConfigured = getCysmoConfig() !== null;
+  get isConfigured() { return getCysmoConfig() !== null; }
 
   async start(input: ProviderStartInput): Promise<ProviderJob> {
     const config = getCysmoConfig();
@@ -78,7 +72,7 @@ class CysmoProvider implements DomainCheckProvider {
 
     const isAcknowledgementError = response.status === 422 && isUnacknowledgedSubdomainsError(response.body);
     if (!response.ok && !isAcknowledgementError) {
-      throw new Error(`Cysmo company creation failed (${response.status}): ${formatResponseBody(response)}`);
+      throw new Error(`Cysmo company creation failed (${response.status}): response details withheld`);
     }
 
     const companyId = getCompanyId(response.body, response.headers);
@@ -119,7 +113,7 @@ class CysmoProvider implements DomainCheckProvider {
         return {
           status: 'failed',
           errorCode: `CYSMO_COMPANY_${response.status}`,
-          errorMessage: `Cysmo company poll failed (${response.status}): ${formatResponseBody(response)}`,
+          errorMessage: `Cysmo company poll failed (${response.status}): response details withheld`,
         };
       }
 
@@ -255,13 +249,4 @@ function isUnacknowledgedSubdomainsError(body: unknown): boolean {
 
 function getUnacknowledgedSubdomains(body: unknown): readonly string[] | undefined {
   return isRecord(body) ? getStringArray(body.domains) : undefined;
-}
-
-function formatUnknownBody(body: unknown): string {
-  if (typeof body === 'string') return body || 'empty response';
-  try {
-    return JSON.stringify(body);
-  } catch {
-    return 'unserializable response';
-  }
 }

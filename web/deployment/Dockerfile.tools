@@ -1,0 +1,18 @@
+ARG NODE_IMAGE=node:24-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+ARG POSTGRES_IMAGE=postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+FROM ${NODE_IMAGE} AS dependencies
+WORKDIR /tools
+COPY deployment/package.json deployment/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+FROM ${POSTGRES_IMAGE} AS tools
+COPY --from=dependencies /usr/local/bin/node /usr/local/bin/node
+COPY --from=dependencies /usr/lib/x86_64-linux-gnu/libstdc++.so.6* /usr/lib/x86_64-linux-gnu/
+COPY --from=dependencies /usr/lib/x86_64-linux-gnu/libatomic.so.1* /usr/lib/x86_64-linux-gnu/
+WORKDIR /tools
+COPY --from=dependencies --chown=10001:10001 /tools/node_modules ./node_modules
+COPY --chown=10001:10001 deployment/tools.mjs deployment/contract.json ./
+COPY --chown=10001:10001 deployment/migrations ./migrations
+ENV NODE_ENV=production PG_BIN_DIRECTORY=/usr/lib/postgresql/18/bin BACKUP_STAGING_DIRECTORY=/backup-staging ASSET_DIRECTORY=/app/assets
+USER 10001:10001
+ENTRYPOINT ["node", "/tools/tools.mjs"]
+CMD ["migrate"]

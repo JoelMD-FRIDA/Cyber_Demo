@@ -33,6 +33,6 @@ export function apiErrorResponse(error: unknown): Response {
     return Response.json({ error: error.message, code: error.code, ...error.details }, { status: error.status });
   }
 
-  console.error(error);
+  console.error('Application request failed.');
   return Response.json({ error: 'An unexpected server error occurred.', code: 'INTERNAL_ERROR' }, { status: 500 });
 }

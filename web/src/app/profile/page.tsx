@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from '@/lib/api-client';
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -20,14 +21,14 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/auth/me", { signal: controller.signal, cache: "no-store" }).then(async (response) => {
-      if (!response.ok) { router.push("/login"); return; }
+    apiFetch("/api/auth/me", { signal: controller.signal, cache: "no-store" }).then(async (response) => {
+      if (!response.ok) { setError(t("domain.loadError")); return; }
       setUser(await response.json() as UserProfile);
     }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : t("domain.loadError")); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [router, t]);
 
-  async function logout() { setLoggingOut(true); await fetch("/api/auth/logout", { method: "POST" }); router.push("/login"); router.refresh(); }
+  async function logout() { setLoggingOut(true); await apiFetch("/api/auth/logout", { method: "POST" }); router.push("/login"); router.refresh(); }
   const fullName = user ? [user.firstname, user.lastname].filter(Boolean).join(" ") || "—" : "—";
   const date = user ? new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", { dateStyle: "long" }).format(new Date(user.createdAt)) : "—";
   const fields = user ? [

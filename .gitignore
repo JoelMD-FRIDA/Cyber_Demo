@@ -10,6 +10,9 @@ node_modules/
 1TB/
 .mendix-cache/
 deployment/
+# Versioned server contract and migration tooling, separate from local deploy state.
+!web/deployment/
+!web/deployment/**
 extraction/
 *.png
 *.jpg
@@ -19,3 +22,8 @@ extraction/
 !web/public/*.png
 !web/public/*.jpg
 !web/public/*.svg
+
+# Keep local tool dependencies out of the versioned deployment contract.
+web/deployment/node_modules/
+
+.bootstrap-images/

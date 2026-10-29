@@ -1,0 +1,148 @@
+# Publication remains blocked by both the repository variable and source contract.
+name: FRIDA Domain Check verified release
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: frida-domain-check-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Credential-free checks
+        working-directory: web
+        env:
+          CI: 'true'
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          npm ci --no-audit --no-fund
+          npm ci --prefix deployment --no-audit --no-fund
+          npm test
+          npm run test:integration
+          npm run lint
+          npm run check:env
+          npm run build
+      - name: Build and exercise readonly app/tools containers
+        working-directory: web
+        run: bash scripts/check-containers.sh
+      - name: Export temporary private-acceptance images
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/domain-check-infrastructure'
+        working-directory: web
+        env:
+          FRIDA_REVIEW_COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/export-acceptance-images.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/domain-check-infrastructure'
+        with:
+          name: frida-acceptance-images
+          path: web/.bootstrap-images/
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+  release:
+    needs: checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'JoelMD-FRIDA/Cyber_Demo' && vars.FRIDA_INTEGRATION_READY == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: '24.21.0'
+      - name: Require reviewed PostgreSQL and migration contract
+        working-directory: web
+        run: npm run check:deployment
+      - id: names
+        name: Registered image layout
+        run: |
+          echo 'app=ghcr.io/joelmd-frida/frida-domain-check' >> "$GITHUB_OUTPUT"
+          echo 'tools=ghcr.io/joelmd-frida/frida-domain-check-tools' >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        id: app
+        with:
+          context: web
+          file: web/Dockerfile
+          target: runner
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.names.outputs.app }}:git-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        id: tools
+        with:
+          context: web
+          file: web/deployment/Dockerfile.tools
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.names.outputs.tools }}:git-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.names.outputs.app }}
+          subject-digest: ${{ steps.app.outputs.digest }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.names.outputs.tools }}
+          subject-digest: ${{ steps.tools.outputs.digest }}
+          push-to-registry: true
+      - name: Release contract
+        shell: bash
+        env:
+          APP_NAME: ${{ steps.names.outputs.app }}
+          APP_DIGEST: ${{ steps.app.outputs.digest }}
+          TOOLS_NAME: ${{ steps.names.outputs.tools }}
+          TOOLS_DIGEST: ${{ steps.tools.outputs.digest }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          e = os.environ
+          tools = e['TOOLS_NAME'] + '@' + e['TOOLS_DIGEST']
+          data = dict(schema=1, repository=e['GITHUB_REPOSITORY'], ref=e['GITHUB_REF'],
+                      workflow='.github/workflows/frida-release.yml', commit=e['GITHUB_SHA'],
+                      run_id=int(e['GITHUB_RUN_ID']), run_number=int(e['GITHUB_RUN_NUMBER']),
+                      run_attempt=int(e['GITHUB_RUN_ATTEMPT']), compatibility='additive',
+                      images=dict(app=e['APP_NAME']+'@'+e['APP_DIGEST'], migrate=tools))
+          with open('release.json', 'w') as f:
+              json.dump(data, f, sort_keys=True)
+              f.write('\n')
+          PY
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frida-release
+          path: release.json
+          if-no-files-found: error
+          retention-days: 30

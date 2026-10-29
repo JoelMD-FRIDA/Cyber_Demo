@@ -12,7 +12,7 @@ export default tseslint.config(
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs["core-web-vitals"].rules,
       "@typescript-eslint/no-unused-vars": "warn",
-      "no-unused-vars": "warn",
+      "no-unused-vars": "off",
     },
   },
   {

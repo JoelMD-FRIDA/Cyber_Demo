@@ -1,3 +1,4 @@
+import { fetchProviderJson } from './provider-http';
 import {
   DomainCheckProviderError,
   type DomainCheckProvider,
@@ -7,7 +8,6 @@ import {
 } from './domain-check-provider';
 
 const DEFAULT_PANTA_API_BASE_URL = 'https://api.moses-security.de';
-const REQUEST_TIMEOUT_MS = 30_000;
 
 interface PantaConfig {
   readonly apiBaseUrl: string;
@@ -38,7 +38,7 @@ export function normalizePantaContact(value: string): string {
 class PantaProvider implements DomainCheckProvider {
   readonly key = 'panta';
   readonly inputType = 'contact' as const;
-  readonly isConfigured = getPantaConfig() !== null;
+  get isConfigured() { return getPantaConfig() !== null; }
 
   async start(input: ProviderStartInput): Promise<ProviderJob> {
     const config = getPantaConfig();
@@ -114,58 +114,27 @@ class PantaProvider implements DomainCheckProvider {
 export const pantaProvider = new PantaProvider();
 
 async function queryPanta(config: PantaConfig, contact: string): Promise<Record<string, unknown>> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(`${config.apiBaseUrl.replace(/\/+$/, '')}/v1/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'FRIDA DomainCheck',
-      },
-      body: JSON.stringify({ apiKey: config.apiKey, contact, showBreaches: true }),
-      signal: controller.signal,
-    });
-    const body = await parseJsonBody(response);
-
-    if (!response.ok) {
-      throw new DomainCheckProviderError(
-        `PANTA_HTTP_${response.status}`,
-        `PANTA API request failed (${response.status}): ${formatResponseBody(body)}`,
-        response.status >= 500 || response.status === 429,
-      );
-    }
-    if (!isRecord(body)) {
-      throw new DomainCheckProviderError('PANTA_INVALID_RESPONSE', 'PANTA API returned an invalid response.', false);
-    }
-
-    const errorCode = parseErrorCode(body.error);
-    if (errorCode !== 0) {
-      const detail = getString(body.message) ?? `PANTA API returned error ${errorCode}.`;
-      throw new DomainCheckProviderError(getPantaErrorCode(errorCode), detail, errorCode === 1);
-    }
-
-    return body;
-  } catch (error) {
-    if (error instanceof DomainCheckProviderError) throw error;
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new DomainCheckProviderError('PANTA_TIMEOUT', `PANTA API request timed out after ${REQUEST_TIMEOUT_MS}ms`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
+  const response = await fetchProviderJson(`${config.apiBaseUrl.replace(/\/+$/, '')}/v1/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'FRIDA DomainCheck' },
+    body: JSON.stringify({ apiKey: config.apiKey, contact, showBreaches: true }),
+  });
+  if (!response.ok) {
+    throw new DomainCheckProviderError(
+      `PANTA_HTTP_${response.status}`,
+      `PANTA API request failed (${response.status}).`,
+      response.status >= 500 || response.status === 429,
+    );
   }
-}
-
-async function parseJsonBody(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
+  const body = response.body;
+  if (!isRecord(body)) {
+    throw new DomainCheckProviderError('PANTA_INVALID_RESPONSE', 'PANTA API returned an invalid response.', false);
   }
+  const errorCode = parseErrorCode(body.error);
+  if (errorCode !== 0) {
+    throw new DomainCheckProviderError(getPantaErrorCode(errorCode), `PANTA API returned error ${errorCode}.`, errorCode === 1);
+  }
+  return body;
 }
 
 function getPantaErrorCode(code: number): string {
@@ -183,16 +152,6 @@ function parseErrorCode(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
   if (typeof value === 'string' && /^\d+$/.test(value)) return Number.parseInt(value, 10);
   return 0;
-}
-
-function formatResponseBody(body: unknown): string {
-  if (typeof body === 'string') return body || 'empty response';
-  if (body === null || body === undefined) return 'empty response';
-  try {
-    return JSON.stringify(body);
-  } catch {
-    return 'unserializable response';
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

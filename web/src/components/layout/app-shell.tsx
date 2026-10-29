@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from '@/lib/api-client';
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
@@ -28,6 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const skipsSessionProbe =
       pathname === "/login" ||
+      pathname.startsWith("/auth/") ||
       pathname === "/register" ||
       pathname === "/forgot-password" ||
       pathname === "/reset-password" ||
@@ -46,7 +48,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       setLoading(true);
 
       try {
-        const res = await fetch("/api/auth/me", {
+        const res = await apiFetch("/api/auth/me", {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -82,7 +84,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const hasAdminSidebar = userRole === "admin";
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await apiFetch("/api/auth/logout", { method: "POST" });
     setSessionUser(null);
     router.push("/login");
     router.refresh();

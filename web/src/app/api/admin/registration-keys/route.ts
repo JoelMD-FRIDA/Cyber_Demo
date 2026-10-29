@@ -1,3 +1,4 @@
+import { jsonBody,optionalText } from '@/lib/request-body';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/guards';
 import { apiErrorResponse, ApiError } from '@/lib/api-errors';
@@ -27,17 +28,17 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { admin } = await requireAdmin();
-    const body = await request.json();
+    const body = await jsonBody(request);
     const code = typeof body.code === 'string' ? body.code.trim() : '';
     const totalSlots = Number(body.totalSlots);
     if (!code || !Number.isInteger(totalSlots) || totalSlots < 1) throw new ApiError('INVALID_INPUT', 'Code and a positive slot count are required.');
     const { data, error } = await admin.from('registration_keys').insert({
       code,
-      company: body.company || null,
-      company_domain: body.companyDomain || null,
+      company: optionalText(body.company),
+      company_domain: optionalText(body.companyDomain),
       total_slots: totalSlots,
       enabled: body.enabled !== false,
-      expires_at: body.expiresAt || null,
+      expires_at: optionalText(body.expiresAt),
     }).select('*').single();
     if (error) throw new ApiError(error.code === '23505' ? 'CONFLICT' : 'INTERNAL_ERROR', error.message, error.code === '23505' ? 409 : 500);
     return NextResponse.json({ key: mapKey(data as unknown as Record<string, unknown>) }, { status: 201 });

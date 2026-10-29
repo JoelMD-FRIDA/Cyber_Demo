@@ -6,10 +6,10 @@ const processCheck = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/domain-check-service', () => ({
   getDomainCheck: getCheck,
-  processDomainCheckOnDemand: processCheck,
+  advanceDomainCheck: processCheck,
 }));
 
-import { GET } from './route';
+import { GET,POST } from './route';
 
 describe('GET /api/domain-check/[id]', () => {
   beforeEach(() => {
@@ -17,25 +17,24 @@ describe('GET /api/domain-check/[id]', () => {
     processCheck.mockReset().mockResolvedValue(undefined);
   });
 
-  it('advances an active check while its results page is open', async () => {
-    getCheck
-      .mockResolvedValueOnce({ id: 'check-1', status: 'queued' })
+  it('advances an active check only through POST', async () => {
+    processCheck
       .mockResolvedValueOnce({ id: 'check-1', status: 'completed' });
 
-    const response = await GET(new Request('http://localhost/api/domain-check/check-1'), { params: Promise.resolve({ id: 'check-1' }) });
+    const response = await POST(new Request('http://localhost/api/domain-check/check-1'), { params: Promise.resolve({ id: 'check-1' }) });
 
     expect(response.status).toBe(200);
     expect(processCheck).toHaveBeenCalledWith('check-1');
     expect(await response.json()).toEqual({ check: { id: 'check-1', status: 'completed' } });
   });
 
-  it('does not process a completed check again', async () => {
-    getCheck.mockResolvedValue({ id: 'check-1', status: 'completed' });
+  it('GET only reads, even when processing is still queued', async () => {
+    getCheck.mockResolvedValue({ id: 'check-1', status: 'queued' });
 
     const response = await GET(new Request('http://localhost/api/domain-check/check-1'), { params: Promise.resolve({ id: 'check-1' }) });
 
     expect(response.status).toBe(200);
     expect(processCheck).not.toHaveBeenCalled();
-    expect(await response.json()).toEqual({ check: { id: 'check-1', status: 'completed' } });
+    expect(await response.json()).toEqual({ check: { id: 'check-1', status: 'queued' } });
   });
 });

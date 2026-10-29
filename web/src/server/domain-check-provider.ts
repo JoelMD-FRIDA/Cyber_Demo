@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 import type { DomainCheckResult, StructuredDomainCheckResult } from './domain-check-types';
 
 export type ProviderInputType = 'domain' | 'contact';

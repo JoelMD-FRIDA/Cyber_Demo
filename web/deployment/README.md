@@ -147,7 +147,18 @@ tabs/sign-ins cannot overwrite another request's PKCE context.
 The confidential `frida-cyber-web` IdP client needs `consent_mode: implicit` for
 silent renewal. Preserve the existing client policy, scopes, PKCE and other
 clients. The server activation helper validates and installs this one setting.
-After this update, complete one fresh sign-in to issue the renewal cookie.
+An already valid application session now obtains its renewal binding from
+`/api/auth/me` using its existing issuer/subject mapping; an upgrade does not
+require another sign-in. The response includes a relative session TTL so the
+browser can use an already renewed session before opening another OIDC flow.
+A missing iframe notification also falls back to checking the actual live session.
+
+Scan processing validates the caller and ownership once at the beginning of the
+request, then uses that same scoped context to return its result. Expiry or cookie
+rotation during bounded provider work must not turn a successful scan into a 401.
+Subsequent requests still enforce session expiry and ownership. A saved-results
+page resumes the existing scan after auth recovery or a transient server failure;
+retrying that page does not create another queued check.
 
 Callback failures return a retryable login page or signal failed renewal to the
 existing page. Logs record only a fixed `FRIDA_LOGIN_FAILED` category without

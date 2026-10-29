@@ -1,6 +1,6 @@
 import * as oidc from 'openid-client';
 import { hash, opaque, encrypt, decrypt, appOrigin, safeReturnPath, SESSION_SECONDS, RENEWAL_SECONDS } from './session';
-import { withWrites } from '@/lib/db/postgres';
+import { withWrites, sql } from '@/lib/db/postgres';
 
 let cached: { config: oidc.Configuration; until: number } | undefined;
 function required(value: string | undefined) {
@@ -77,6 +77,15 @@ function renewalBinding(value:string|undefined,interactive=false):RenewalBinding
 // API identity still requires a fresh, enabled 60-second app session.
 export function hasRenewalContext(value:string|undefined) {
   try {renewalBinding(value,true);return true;}catch{return false;}
+}
+export async function renewalForActiveSession(profileId:string,value:string|undefined) {
+  try {if(renewalBinding(value).profileId===profileId)return undefined;}catch{}
+  // Upgrade a currently authenticated browser without demanding another sign-in.
+  // Identity comes from its existing issuer/subject mapping, never from an email.
+  const result=await sql<{issuer:string;subject:string}>(
+    'SELECT issuer,subject FROM oidc_identities WHERE profile_id=$1 AND issuer=$2',[profileId,oidcSettings().issuer]);
+  if(result.rows.length!==1)throw new Error('No unique identity mapping for the active session.');
+  return encrypt(JSON.stringify({...result.rows[0],profileId,expires:Date.now()+RENEWAL_SECONDS*1000}));
 }
 export async function startLogin(returnPath: string | null, renewal?:{cookie:string|undefined; interactive?:boolean}) {
   const binding=renewal ? renewalBinding(renewal.cookie,renewal.interactive) : undefined;

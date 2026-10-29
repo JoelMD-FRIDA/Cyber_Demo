@@ -6,7 +6,7 @@ const processCheck = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/domain-check-service', () => ({
   getDomainCheck: getCheck,
-  processDomainCheckOnDemand: processCheck,
+  advanceDomainCheck: processCheck,
 }));
 
 import { GET,POST } from './route';
@@ -18,7 +18,7 @@ describe('GET /api/domain-check/[id]', () => {
   });
 
   it('advances an active check only through POST', async () => {
-    getCheck
+    processCheck
       .mockResolvedValueOnce({ id: 'check-1', status: 'completed' });
 
     const response = await POST(new Request('http://localhost/api/domain-check/check-1'), { params: Promise.resolve({ id: 'check-1' }) });

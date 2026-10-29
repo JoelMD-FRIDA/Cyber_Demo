@@ -11,19 +11,27 @@ export function reportSession(ready: boolean) {
 function csrfCookie() {
   return document.cookie.split('; ').find(value=>value.startsWith('__Host-frida-domain-check-csrf='));
 }
+async function currentSession(allowNearExpiry=false) {
+  try {
+    const response=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(5000)});
+    if(!response.ok)return false;
+    const ttl=response.headers.get('X-Frida-Session-TTL');
+    return !ttl || Number(ttl)>(allowNearExpiry?5000:25000);
+  }catch{return false;}
+}
 function transport(interactive: boolean): Promise<boolean> {
   return new Promise(resolve=>{
     const previousCsrf = csrfCookie();
     const frame = interactive ? undefined : document.createElement('iframe');
     const url = '/api/auth/login?renew='+(interactive?'interactive':'silent');
     const popup = interactive ? window.open(url,'frida-domain-check-signin','popup,width=520,height=720') : null;
-    if (interactive && !popup) { reportSession(false); resolve(false); return; }
+    if (interactive && !popup) { resolve(false); return; }
     if (frame) { frame.hidden=true; frame.title='Session renewal'; frame.setAttribute('aria-hidden','true'); frame.src=url; }
     let settled=false;
     const done=(ready:boolean)=>{
       if(settled)return;settled=true;clearTimeout(timeout);clearInterval(poll);
       window.removeEventListener('message',message);frame?.remove();
-      if(popup&&!popup.closed)popup.close();reportSession(ready);resolve(ready);
+      if(popup&&!popup.closed)popup.close();resolve(ready);
     };
     const message=(event:MessageEvent)=>{
       if(event.origin!==window.location.origin || event.source!==(popup??frame?.contentWindow) ||
@@ -43,14 +51,17 @@ function transport(interactive: boolean): Promise<boolean> {
 export function renewSession(interactive=false): Promise<boolean> {
   if(pending)return pending;
   const before=csrfCookie();
-  const operation=()=>{
+  const operation=()=>interactive?transport(true):(async()=>{
     // Another tab may have completed renewal while this tab waited for the lock.
-    if(!interactive&&csrfCookie()&&csrfCookie()!==before) { reportSession(true); return Promise.resolve(true); }
-    return transport(interactive);
-  };
+    if(csrfCookie()&&csrfCookie()!==before&&await currentSession(true))return true;
+    if(await currentSession())return true;
+    const ready=await transport(false);
+    // A failed background round-trip does not invalidate an otherwise live app session.
+    return ready||await currentSession(true);
+  })();
   // A popup must open synchronously in the click handler to avoid popup blockers.
   const result=!interactive&&navigator.locks
     ? Promise.resolve(navigator.locks.request('frida-domain-check-renewal',operation)) : operation();
-  pending=result.finally(()=>{pending=undefined;});
+  pending=result.then(ready=>{reportSession(ready);return ready;}).finally(()=>{pending=undefined;});
   return pending;
 }

@@ -6,8 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { NextRequest } from 'next/server';
-const requestState=vi.hoisted(()=>({cookie:'',authorization:''}));
-vi.mock('next/headers',()=>({cookies:async()=>({get:(name:string)=>name==='__Host-frida-domain-check'?{value:requestState.cookie}:undefined}),headers:async()=>new Headers(requestState.authorization?{authorization:requestState.authorization}:{})}));
+const requestState=vi.hoisted(()=>({cookie:'',authorization:'',renewal:''}));
+vi.mock('next/headers',()=>({cookies:async()=>({get:(name:string)=>name==='__Host-frida-domain-check'?{value:requestState.cookie}:name==='__Host-frida-domain-check-renew'&&requestState.renewal?{value:requestState.renewal}:undefined}),headers:async()=>new Headers(requestState.authorization?{authorization:requestState.authorization}:{})}));
 import { startLogin,finishLogin } from '@/lib/auth/oidc';
 import { SESSION_COOKIE,CSRF_COOKIE,RENEWAL_COOKIE,sessionForCookie,encrypt,decrypt } from '@/lib/auth/session';
 import { createDatabaseClient } from '@/lib/db/client';
@@ -22,6 +22,8 @@ import { GET as ready } from '@/app/api/health/ready/route';
 import { GET as probe } from '@/app/api/internal/deployment-probe/route';
 import { GET as beginLogin } from '@/app/api/auth/login/route';
 import { GET as loginCallback } from '@/app/auth/callback/route';
+import { POST as advanceScan } from '@/app/api/domain-check/[id]/route';
+import { GET as currentSession } from '@/app/api/auth/me/route';
 
 const grants=new Map<string,Record<string,unknown>>();
 let server:Server,issuer:string,owner:Client,sessionA:{session:string;csrf:string;returnPath:string;renewalCookie?:string},sessionB:typeof sessionA;
@@ -77,6 +79,19 @@ describe('fresh local PostgreSQL application',()=>{
   expect((await owner.query("SELECT to_regclass('auth.users') AS auth")).rows[0].auth).toBe(null);
   const rows=(await owner.query('SELECT expires_at-now() AS remaining FROM app_sessions')).rows;
   expect(rows).toHaveLength(2);
+ });
+ it('upgrades an active session with a correctly bound renewal cookie without asking for another login',async()=>{
+  requestState.cookie=sessionA.session;requestState.renewal=sessionB.renewalCookie!;
+  const response=await currentSession();
+  expect(response.status).toBe(200);
+  expect(Number(response.headers.get('X-Frida-Session-TTL'))).toBeGreaterThan(0);
+  const bindingHeader=response.headers.get('Set-Cookie')!;
+  expect(bindingHeader).toMatch(/HttpOnly/i);expect(bindingHeader).toMatch(/Secure/i);
+  const binding=bindingHeader.match(/__Host-frida-domain-check-renew=([^;]+)/)![1];
+  expect(JSON.parse(decrypt(binding))).toMatchObject({issuer,subject:'person-a',profileId:profileA});
+  expect(await sessionForCookie(binding)).toBe(null);
+  requestState.cookie='';requestState.renewal='';
+  const denied=await currentSession();expect(denied.status).toBe(401);expect(denied.headers.get('Set-Cookie')).toBeNull();
  });
  it('rejects invalid signatures, audience, nonce, issuer, expiry and missing sandbox entitlement',async()=>{
   for(const claims of [{aud:'peer-app'},{nonce:'wrong'},{iss:'https://untrusted.invalid'},{exp:1},{groups:['staff-only']},{email_verified:false}]){
@@ -165,6 +180,33 @@ describe('fresh local PostgreSQL application',()=>{
   expect(results.filter(row=>row.data)).toHaveLength(10);expect(results.filter(row=>row.error?.message==='CHECK_LIMIT_EXCEEDED')).toHaveLength(5);
   requestState.cookie=sessionA.session;
   await expect(getDomainCheck(results.find(row=>row.data)!.data![0].id)).rejects.toMatchObject({status:404});
+ });
+ it('returns an authorized scan result even if its original session expires during the provider call',async()=>{
+  requestState.cookie=sessionA.session;
+  const providerId=(await owner.query("SELECT id FROM domain_check_providers WHERE provider_key='panta'")).rows[0].id;
+  const created=await createQueuedDomainCheck({url:'scan-session@example.test',providerId,hasAcceptedDisclaimer:true,disclaimerVersion:'1.0'});
+  const started=vi.fn(async()=>{
+   await owner.query("UPDATE app_sessions SET expires_at=now()-interval '1 second' WHERE id_hash=$1",[createHash('sha256').update(sessionA.session).digest('hex')]);
+   return {externalJobId:'scan-session-fixture',completed:true,snapshot:{}};
+  });
+  const mock=vi.spyOn(providers,'getProviderAdapter').mockReturnValue({key:'panta',inputType:'contact',isConfigured:true,
+   start:started,poll:vi.fn(),normalize:()=>({structuredResult:{},richResult:{}})} as never);
+  try {
+   const response=await advanceScan(new Request('https://domain.frida.test/api/domain-check/'+created.id,{method:'POST'}),
+    {params:Promise.resolve({id:created.id})});
+   expect(response.status).toBe(200);
+   expect((await response.json()).check).toMatchObject({id:created.id,status:'completed'});
+   expect(started).toHaveBeenCalledTimes(1);
+   expect((await owner.query('SELECT count(*)::int AS n FROM domain_checks WHERE id=$1',[created.id])).rows[0].n).toBe(1);
+   expect(await sessionForCookie(sessionA.session)).toBe(null);
+   const expired=await advanceScan(new Request('https://domain.frida.test/api/domain-check/'+created.id,{method:'POST'}),{params:Promise.resolve({id:created.id})});
+   expect(expired.status).toBe(401);
+   requestState.cookie=sessionB.session;
+   const foreign=await advanceScan(new Request('https://domain.frida.test/api/domain-check/'+created.id,{method:'POST'}),{params:Promise.resolve({id:created.id})});
+   expect(foreign.status).toBe(404);expect(started).toHaveBeenCalledTimes(1);
+  } finally {
+   mock.mockRestore();sessionA=await(await login('person-a','a@example.test')).result;requestState.cookie=sessionA.session;
+  }
  });
  it('never retries an ambiguous provider submission and rejects a stale worker write',async()=>{
   requestState.cookie=sessionA.session;

@@ -1,6 +1,6 @@
 import { createDatabaseClient } from '@/lib/db/client';
 import { withWriteLease } from '@/lib/db/postgres';
-import { requireUser } from '@/lib/auth/guards';
+import { requireUser, type AuthenticatedRequestContext } from '@/lib/auth/guards';
 import { ApiError } from '@/lib/api-errors';
 import { CURRENT_DISCLAIMER_VERSION, getCronBatchSize, getCronLeaseSeconds, getDomainCheckLimit, getDomainCheckPollIntervalMs } from '@/lib/domain-check/config';
 import { getProviderAdapter, isProviderConfigured } from './domain-check-cysmo';
@@ -139,6 +139,10 @@ export async function createQueuedDomainCheck(input: {
 
 export async function getDomainCheck(id: string) {
   const context = await requireUser();
+  return readOwnedDomainCheck(context,id);
+}
+
+async function readOwnedDomainCheck(context: AuthenticatedRequestContext, id: string) {
   const { data: row, error } = await context.db
     .from('domain_checks')
     .select('*')
@@ -168,6 +172,17 @@ export async function getDomainCheck(id: string) {
  */
 export async function processDomainCheckOnDemand(id: string): Promise<void> {
   const context = await requireUser();
+  return processOwnedDomainCheck(context,id);
+}
+
+/** Authenticate once before any provider work; the response belongs to that request. */
+export async function advanceDomainCheck(id: string) {
+  const context = await requireUser();
+  await processOwnedDomainCheck(context,id);
+  return readOwnedDomainCheck(context,id);
+}
+
+async function processOwnedDomainCheck(context: AuthenticatedRequestContext, id: string): Promise<void> {
   const { data: ownedCheck, error: ownershipError } = await context.db
     .from('domain_checks')
     .select('id')

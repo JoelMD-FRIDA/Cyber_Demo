@@ -9,11 +9,12 @@ export interface AuthenticatedRequestContext {
   user: { id: string; email: string };
   profile: Profile;
   db: AppDatabaseClient;
+  sessionExpiresAt: number;
 }
 export async function getAuthenticatedContext(): Promise<AuthenticatedRequestContext | null> {
   if ((await headers()).has('authorization')) return null;
   const session = await sessionForCookie((await cookies()).get(SESSION_COOKIE)?.value);
-  return session ? { user: session.user, profile: session.profile, db: createDatabaseClient() } : null;
+  return session ? { user: session.user, profile: session.profile, db: createDatabaseClient(),sessionExpiresAt:session.expiresAt } : null;
 }
 export async function requireUser(): Promise<AuthenticatedRequestContext> {
   const context = await getAuthenticatedContext();

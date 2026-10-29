@@ -51,8 +51,9 @@ export function decrypt(value: string) {
 }
 export async function sessionForCookie(value: string | undefined) {
   if (!value || !/^[A-Za-z0-9_-]{43}$/.test(value)) return null;
-  const result = await sql<Database['public']['Tables']['profiles']['Row'] & { csrf_hash: string }>(
-    'SELECT p.*,s.csrf_hash FROM app_sessions s JOIN profiles p ON p.id=s.profile_id WHERE s.id_hash=$1 AND s.expires_at>now() AND p.enabled', [hash(value)]);
+  const result = await sql<Database['public']['Tables']['profiles']['Row'] & { csrf_hash: string; session_expires_at: Date }>(
+    'SELECT p.*,s.csrf_hash,s.expires_at AS session_expires_at FROM app_sessions s JOIN profiles p ON p.id=s.profile_id WHERE s.id_hash=$1 AND s.expires_at>now() AND p.enabled', [hash(value)]);
   const profile = result.rows[0];
-  return profile ? { user: { id: profile.id, email: profile.email }, profile, csrfHash: profile.csrf_hash } : null;
+  return profile ? { user: { id: profile.id, email: profile.email }, profile, csrfHash: profile.csrf_hash,
+    expiresAt:new Date(profile.session_expires_at).getTime() } : null;
 }

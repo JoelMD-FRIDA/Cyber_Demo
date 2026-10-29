@@ -4,6 +4,8 @@ import DomainCheckPage from '../../src/app/dashboard/domain-check/page';
 import {SessionContinuity} from '../../src/components/session-continuity';
 import RenewalComplete from '../../src/app/auth/renew/complete/page';
 import {apiFetch} from '../../src/lib/api-client';
+import {SavedDomainCheckPage} from '../../src/components/domain-check/saved-domain-check-page';
 (window as Window&{fixtureFetch?:typeof apiFetch}).fixtureFetch=apiFetch;
 createRoot(document.getElementById('root')!).render(window.location.pathname==='/auth/renew/complete'
-  ? <RenewalComplete/> : <I18nProvider initialLocale="en"><SessionContinuity/><DomainCheckPage/></I18nProvider>);
+  ? <RenewalComplete/> : <I18nProvider initialLocale="en"><SessionContinuity/>{window.location.pathname.includes('/results/')
+    ? <SavedDomainCheckPage checkId={window.location.pathname.split('/').at(-1)!}/> : <DomainCheckPage/>}</I18nProvider>);

@@ -3,6 +3,9 @@ import { hash, opaque, encrypt, decrypt, appOrigin, safeReturnPath, SESSION_SECO
 import { withWrites, sql } from '@/lib/db/postgres';
 
 let cached: { config: oidc.Configuration; until: number } | undefined;
+// The shared identity service is CPU limited; client-secret verification can
+// exceed four seconds when two people sign in together. Never replay code grants.
+const IDENTITY_TIMEOUT_MS = 30_000;
 function required(value: string | undefined) {
   if (!value?.trim()) throw new Error('Central login configuration is incomplete.');
   return value.trim();
@@ -23,11 +26,11 @@ export async function oidcConfiguration() {
   const origin = new URL(settings.issuer).origin;
   const config = await oidc.discovery(new URL(settings.issuer),settings.clientId,
     { id_token_signed_response_alg: 'RS256' },oidc.ClientSecretBasic(settings.secret), {
-      timeout: 4,
+      timeout: IDENTITY_TIMEOUT_MS / 1000,
       execute: [oidc.enableNonRepudiationChecks],
       [oidc.customFetch]: async (url, options) => {
         if (new URL(String(url)).origin !== origin) throw new Error('Untrusted identity endpoint.');
-        const signal = options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(4000)]) : AbortSignal.timeout(4000);
+        const signal = options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(IDENTITY_TIMEOUT_MS)]) : AbortSignal.timeout(IDENTITY_TIMEOUT_MS);
         const response = await fetch(url,{ ...options, signal, body:options.body as BodyInit, redirect: 'error', cache: 'no-store' });
         const reader=response.body?.getReader();
         if(!reader)return response;
@@ -61,7 +64,7 @@ export function acceptedClaims(claims: Record<string, unknown>) {
       !(entitlement === settings.entitlement || (Array.isArray(entitlement) && entitlement.includes(settings.entitlement))))
     throw new Error('This identity is not authorized for the sandbox.');
   return { issuer: settings.issuer, subject: claims.sub, email: claims.email.toLowerCase(),
-    expires: new Date(Math.min(Date.now()+SESSION_SECONDS*1000,claims.exp*1000)) };
+    expires: new Date(Date.now()+SESSION_SECONDS*1000) };
 }
 interface RenewalBinding { issuer:string; subject:string; profileId:string; expires:number; }
 function renewalBinding(value:string|undefined,interactive=false):RenewalBinding {
@@ -74,7 +77,7 @@ function renewalBinding(value:string|undefined,interactive=false):RenewalBinding
   return binding;
 }
 // Only explicitly allowed client-rendered shells may resume from this context.
-// API identity still requires a fresh, enabled 60-second app session.
+// API identity still requires an unexpired session and an enabled local account.
 export function hasRenewalContext(value:string|undefined) {
   try {renewalBinding(value,true);return true;}catch{return false;}
 }
@@ -140,7 +143,7 @@ export async function finishLogin(url: URL, transaction: string | undefined) {
     await db.query('DELETE FROM app_sessions WHERE expires_at<=now()');
     await db.query('INSERT INTO app_sessions(id_hash,profile_id,csrf_hash,expires_at) VALUES($1,$2,$3,$4)', [hash(session),profile.id,hash(csrf),identity.expires]);
   });
-  // Access/refresh/ID tokens are deliberately not retained; reauthentication
-  // through the central SSO session bounds entitlement staleness to 60 seconds.
+  // Access/refresh/ID tokens are not retained. The validated login establishes
+  // the app session; local enablement and roles are checked on every request.
   return { session, csrf, renewalCookie, returnPath: safeReturnPath(entry.return_path) };
 }

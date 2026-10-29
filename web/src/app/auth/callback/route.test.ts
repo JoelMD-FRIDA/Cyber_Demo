@@ -3,7 +3,7 @@ import { beforeEach,afterEach,describe,it,expect,vi } from 'vitest';
 import { NextRequest } from 'next/server';
 vi.mock('@/lib/auth/oidc',()=>({finishLogin:vi.fn()}));
 import { finishLogin } from '@/lib/auth/oidc';
-import { transactionCookieName,RENEWAL_COOKIE } from '@/lib/auth/session';
+import { transactionCookieName,RENEWAL_COOKIE,SESSION_COOKIE,CSRF_COOKIE,SESSION_SECONDS } from '@/lib/auth/session';
 import { GET } from './route';
 
 describe('central sign-in callbacks',()=>{
@@ -20,6 +20,8 @@ describe('central sign-in callbacks',()=>{
       expect(response.status).toBe(307);
       expect(vi.mocked(finishLogin).mock.lastCall?.[1]).toBe(expected);
       expect(response.cookies.get(RENEWAL_COOKIE)?.value).toBe('binding');
+      expect(response.cookies.get(SESSION_COOKIE)?.maxAge).toBe(SESSION_SECONDS);
+      expect(response.cookies.get(CSRF_COOKIE)?.maxAge).toBe(SESSION_SECONDS);
       expect(response.cookies.get(state==='normal-state'?first:second)?.maxAge).toBe(0);
       expect(response.cookies.get(state==='normal-state'?second:first)).toBeUndefined();
     }
@@ -39,5 +41,14 @@ describe('central sign-in callbacks',()=>{
     const response=await GET(new NextRequest('https://domain.frida.test/auth/callback?state=silent-state&error=login_required',
       {headers:{host:'domain.frida.test',cookie:transactionCookieName('silent-state','silent')+'=transaction'}}));
     expect(response.headers.get('location')).toBe('https://domain.frida.test/auth/renew/complete?error=1');
+  });
+  it('records a precise timeout category while keeping upstream details private',async()=>{
+    vi.mocked(finishLogin).mockRejectedValue(Object.assign(new Error('private-token-and-email'),{code:'OAUTH_TIMEOUT'}));
+    const warning=vi.spyOn(console,'warn').mockImplementation(()=>{});
+    const response=await GET(new NextRequest('https://domain.frida.test/auth/callback?state=state&code=private-code',
+      {headers:{host:'domain.frida.test'}}));
+    expect(response.headers.get('location')).toBe('https://domain.frida.test/login?error=signin_failed');
+    expect(warning.mock.calls).toEqual([['FRIDA_LOGIN_FAILED','IDENTITY_TIMEOUT']]);
+    expect(response.headers.get('location')).not.toContain('private');
   });
 });

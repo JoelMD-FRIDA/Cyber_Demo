@@ -1,11 +1,13 @@
 import { createHash, randomBytes, createCipheriv, createDecipheriv, timingSafeEqual } from 'node:crypto';
-import { sql } from '@/lib/db/postgres';
+import { sql, withWrites } from '@/lib/db/postgres';
 import type { Database } from '@/lib/db/types';
 
 export const SESSION_COOKIE = '__Host-frida-domain-check';
 export const CSRF_COOKIE = '__Host-frida-domain-check-csrf';
 export const TRANSACTION_COOKIE = '__Host-frida-domain-check-oidc';
-export const SESSION_SECONDS = 60;
+// The OIDC token proves identity at sign-in. The application session has its own
+// lifetime, refreshed during use; it must not depend on minute-by-minute SSO.
+export const SESSION_SECONDS = 7 * 86400;
 // This binding permits reauthentication only; private APIs still require a live session.
 export const RENEWAL_COOKIE = '__Host-frida-domain-check-renew';
 export const RENEWAL_SECONDS = 3600;
@@ -56,4 +58,15 @@ export async function sessionForCookie(value: string | undefined) {
   const profile = result.rows[0];
   return profile ? { user: { id: profile.id, email: profile.email }, profile, csrfHash: profile.csrf_hash,
     expiresAt:new Date(profile.session_expires_at).getTime() } : null;
+}
+
+export async function extendActiveSession(value: string, expiresAt: number) {
+  // Write at most once a day. Conditional UPDATE cannot revive logout, expiry or
+  // a disabled account, including when another request changed it meanwhile.
+  if (expiresAt > Date.now() + (SESSION_SECONDS - 86400) * 1000) return expiresAt;
+  const result = await withWrites(db => db.query<{ expires_at: Date }>(
+    `UPDATE app_sessions s SET expires_at=now()+make_interval(secs => $2)
+     FROM profiles p WHERE s.id_hash=$1 AND s.profile_id=p.id AND p.enabled
+     AND s.expires_at>now() RETURNING s.expires_at`, [hash(value), SESSION_SECONDS]));
+  return result.rows[0] ? new Date(result.rows[0].expires_at).getTime() : undefined;
 }

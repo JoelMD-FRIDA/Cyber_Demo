@@ -11,13 +11,13 @@ export function reportSession(ready: boolean) {
 function csrfCookie() {
   return document.cookie.split('; ').find(value=>value.startsWith('__Host-frida-domain-check-csrf='));
 }
-async function currentSession(allowNearExpiry=false) {
+type SessionStatus = 'ready' | 'expired' | 'unavailable';
+async function currentSession(): Promise<SessionStatus> {
   try {
     const response=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(5000)});
-    if(!response.ok)return false;
-    const ttl=response.headers.get('X-Frida-Session-TTL');
-    return !ttl || Number(ttl)>(allowNearExpiry?5000:25000);
-  }catch{return false;}
+    if(response.status===401)return 'expired';
+    return response.ok?'ready':'unavailable';
+  }catch{return 'unavailable';}
 }
 function transport(interactive: boolean): Promise<boolean> {
   return new Promise(resolve=>{
@@ -38,7 +38,7 @@ function transport(interactive: boolean): Promise<boolean> {
          event.data?.type!=='frida-domain-check-renewed')return;
       done(event.data.ready===true);
     };
-    const timeout=setTimeout(()=>done(false),interactive?120_000:12_000);
+    const timeout=setTimeout(()=>done(false),interactive?120_000:40_000);
     // Some identity providers sever window.opener. Rotation still proves a callback completed.
     const poll=setInterval(()=>{
       if(interactive&&csrfCookie()&&csrfCookie()!==previousCsrf)done(true);
@@ -51,17 +51,23 @@ function transport(interactive: boolean): Promise<boolean> {
 export function renewSession(interactive=false): Promise<boolean> {
   if(pending)return pending;
   const before=csrfCookie();
-  const operation=()=>interactive?transport(true):(async()=>{
+  const operation=()=>interactive?transport(true).then(ready=>ready?'ready' as const:'expired' as const):(async()=>{
     // Another tab may have completed renewal while this tab waited for the lock.
-    if(csrfCookie()&&csrfCookie()!==before&&await currentSession(true))return true;
-    if(await currentSession())return true;
+    const status=await currentSession();
+    if(status!=='expired')return status;
+    // Only expired legacy sessions need a browser SSO round-trip. Healthy
+    // persistent sessions and temporary network/server failures never open one.
+    if(csrfCookie()&&csrfCookie()!==before)return currentSession();
     const ready=await transport(false);
     // A failed background round-trip does not invalidate an otherwise live app session.
-    return ready||await currentSession(true);
+    return ready?'ready' as const:await currentSession();
   })();
   // A popup must open synchronously in the click handler to avoid popup blockers.
   const result=!interactive&&navigator.locks
     ? Promise.resolve(navigator.locks.request('frida-domain-check-renewal',operation)) : operation();
-  pending=result.then(ready=>{reportSession(ready);return ready;}).finally(()=>{pending=undefined;});
+  pending=result.then(status=>{
+    if(status!=='unavailable')reportSession(status==='ready');
+    return status==='ready';
+  }).finally(()=>{pending=undefined;});
   return pending;
 }

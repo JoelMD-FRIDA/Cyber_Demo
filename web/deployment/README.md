@@ -24,12 +24,14 @@ Identity is linked by exact issuer+subject; email collisions fail for review.
 Password/reset/signup and admin credential provisioning no longer exist.
 
 Sessions are random host-only secure cookies with hashed identifiers in the DB.
-Session lifetime is at most 60 seconds and never exceeds the signed ID token's
-expiry. No refresh/access token is kept. A protected page returns through central
-SSO on expiry, bounding entitlement staleness to 60 seconds; local disable/role
-changes are read on each request. This relies on the IdP's current entitlement
-claims on each authorization. Verify real account/group revocation there before
-activation. Logout clears this app's session; it does not log out other clients.
+Application sessions last seven days and extend during use, with a database
+update at most once a day. The signed ID token must be valid at sign-in; its
+short token lifetime does not impose minute-by-minute browser reauthentication.
+No refresh/access token is kept. Local disable/role changes are read on each
+request, and logout deletes this app's session immediately. Central group removal
+is checked at the next OIDC sign-in, not every 60 seconds: disable the local
+profile or delete its app sessions for immediate Cyber revocation. Logout does
+not log out other clients.
 Mutations require exact Origin plus a session-bound CSRF header. Bearer tokens
 cannot authenticate the browser APIs. Use a base64 32-byte encryption key for
 short-lived encrypted OIDC transactions; losing it invalidates pending logins.
@@ -130,17 +132,21 @@ paths; private container/loopback monitoring remains available.
 
 ## Session continuity
 
-Application authorization remains bounded to 60 seconds. Active Cyber pages
-renew silently with OIDC `prompt=none` and retry an API 401 once with newly read
-CSRF cookies. Renewal preserves the wizard input, provider selection, consent
-checkbox and current page. Denied renewal offers same-account sign-in in a popup;
-it does not force page navigation. Normal sign-in defaults to the check form.
+Successful OIDC sign-in establishes a persistent seven-day application session.
+Active pages check it every five minutes; `/api/auth/me` extends a valid session
+and its session/CSRF cookies during use, keeping their identifiers stable.
+Authenticated legacy 60-second sessions upgrade through the same endpoint.
+Healthy sessions do not open SSO iframes. Temporary network/server failures do
+not display a false signed-out banner or start another identity exchange.
+Normal sign-in defaults to the check form.
 
 An encrypted, HTTP-only renewal binding ties reauthentication to the original
 issuer, subject and local profile for one hour. It never authorizes an API.
-Expired/disabled sessions and revoked entitlements remain denied. Manual sign-in
+Expired/disabled sessions remain denied. Manual sign-in
 in a popup requests fresh authentication and must return as the same account.
-No access, refresh or ID tokens are retained. Logout clears the renewal binding.
+No access, refresh or ID tokens are retained. This is a recovery path for expired
+legacy sessions, not a periodic dependency of persistent sessions. Logout clears
+the renewal binding.
 Each login transaction now has its own state-derived cookie, so simultaneous
 tabs/sign-ins cannot overwrite another request's PKCE context.
 
@@ -160,13 +166,18 @@ Subsequent requests still enforce session expiry and ownership. A saved-results
 page resumes the existing scan after auth recovery or a transient server failure;
 retrying that page does not create another queued check.
 
-Callback failures return a retryable login page or signal failed renewal to the
-existing page. Logs record only a fixed `FRIDA_LOGIN_FAILED` category without
+Identity exchanges have a bounded 30-second timeout: concurrent client-secret
+verification on the CPU-limited shared service was measured above four seconds,
+the old cutoff. Code grants are never blindly retried. Reloading a consumed
+callback preserves an already valid app session instead of showing a login error.
+Other callback failures return a retryable login page or signal failed renewal to
+the existing page. Logs record only a fixed `FRIDA_LOGIN_FAILED` category without
 OAuth codes, tokens, emails or raw upstream errors.
 
 `npm run test:session-browser` exercises the real Cyber form/client in Chromium
-against disposable API/OIDC transports, including denied renewal, the 60-second
-boundary, CSRF retry, exactly one submission and simultaneous tabs. Install the
+against disposable API/OIDC transports, including denied renewal, a scan beyond
+the old 60-second limit without SSO, temporary session-service failures, CSRF
+retry, exactly one submission and simultaneous tabs. Install the
 Playwright browser first or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to a local
 Chromium executable. The PostgreSQL suite separately exercises real signed OIDC
 code exchanges, expired sessions and identity/entitlement rejection.

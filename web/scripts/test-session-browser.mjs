@@ -19,7 +19,7 @@ try {
   build:{outDir:join(work,'bundle'),lib:{entry:resolve(root,'tests/browser-fixture/entry.tsx'),formats:['es'],fileName:()=> 'fixture.js'},minify:false}});
  const cert=join(work,'cert.pem'),key=join(work,'key.pem');
  assert.equal(spawnSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-subj','/CN=127.0.0.1','-days','1'],{stdio:'ignore'}).status,0);
- const state={expired:false,deny:false,hold:false,csrf:'initial',renewals:0,deniedRequests:0,writes:[],held:[],staleScanReply:false,scanPolls:0,omitSignal:false};
+ const state={expired:false,deny:false,hold:false,csrf:'initial',renewals:0,deniedRequests:0,writes:[],held:[],staleScanReply:false,scanPolls:0,omitSignal:false,meUnavailable:false,scanPending:false};
  const complete=(res,interactive)=>{
   if(state.deny){res.writeHead(302,{Location:'/auth/renew/complete?error=1'});res.end();return;}
   state.expired=false;state.csrf='renewed-'+state.renewals;
@@ -35,7 +35,10 @@ try {
   }
   if(url.pathname.startsWith('/api/')) {
    res.setHeader('content-type','application/json');
-   if(url.pathname==='/api/auth/me')res.setHeader('X-Frida-Session-TTL','60000');
+   if(url.pathname==='/api/auth/me'){
+    if(state.meUnavailable){res.writeHead(503);res.end('{}');return;}
+    res.setHeader('X-Frida-Session-TTL',String(7*86400000));
+   }
    if(state.expired){state.deniedRequests++;res.writeHead(401);res.end('{"code":"UNAUTHORIZED"}');return;}
    if(url.pathname==='/api/domain-check/options') {
     res.end(JSON.stringify({providers:[{id:'cysmo-id',key:'cysmo',name:'Cysmo',inputType:'domain',isActive:true,isConfigured:true},
@@ -49,7 +52,7 @@ try {
    if(url.pathname.startsWith('/api/domain-check/')&&url.pathname!=='/api/domain-check/options') {
     state.scanPolls++;
     if(state.staleScanReply){state.staleScanReply=false;res.writeHead(401);res.end('{"code":"UNAUTHORIZED"}');return;}
-    res.end(JSON.stringify({check:{id:url.pathname.split('/').at(-1),url:'synthetic@example.test',status:'completed',
+    res.end(JSON.stringify({check:{id:url.pathname.split('/').at(-1),url:'synthetic@example.test',status:state.scanPending?'running':'completed',
       provider:{id:'panta-id',key:'panta',name:'PANTA'},category:null,createdAt:new Date().toISOString(),
       updatedAt:new Date().toISOString(),remainingChecks:9,maxChecks:10,attemptCount:1,
       externalJobId:'fixture-job',rawResult:null,structuredResult:{},startedAt:null,completedAt:new Date().toISOString()}}));return;
@@ -95,13 +98,17 @@ try {
  assert.equal(state.writes[0].providerId,'panta-id');assert.equal(state.writes[0].url,'synthetic@example.test');
  assert.equal(state.writes[0].hasAcceptedDisclaimer,true);
  console.log('Expired submission silently renews and retries once with new CSRF; exactly one fixture check is created.');
- state.expired=true;const timed=state.renewals;await page.clock.fastForward(61_000);
- await page.waitForFunction(expected=>document.cookie.includes('__Host-frida-domain-check-csrf=renewed-'+expected),timed+1);
- await page.waitForFunction(()=>!document.querySelector('iframe'));
- assert.equal(state.renewals,timed+1);assert.equal(state.expired,false);assert.equal(state.writes.length,1);
+ const timed=state.renewals;await page.clock.fastForward(61_000);
+ assert.equal(state.renewals,timed);assert.equal(state.expired,false);assert.equal(state.writes.length,1);
  assert.equal(page.url(),origin+'/dashboard/domain-check');
  assert.deepEqual(errors,[]);
- console.log('Crossing the 60-second boundary renews in the background without navigating or submitting again.');
+ console.log('Crossing the old 60-second limit keeps the session with no SSO round-trip or new submission.');
+ state.meUnavailable=true;await page.clock.fastForward(5*60_000);
+ await page.evaluate(async()=>window.fixtureFetch('/api/auth/me'));
+ assert.equal(state.renewals,timed);
+ assert.equal(await page.getByRole('button',{name:'Renew session',exact:true}).count(),0);
+ state.meUnavailable=false;
+ console.log('A temporary session-service failure does not open SSO or display a false sign-in banner.');
  const peer=await context.newPage();await peer.goto(origin+'/dashboard/domain-check');
  await peer.getByRole('radio',{name:/PANTA/}).waitFor();
  state.expired=true;state.hold=true;const concurrent=state.renewals,denied=state.deniedRequests;
@@ -117,14 +124,22 @@ try {
  const results=origin+'/dashboard/domain-check/results/11111111-1111-4111-8111-111111111111';
  state.staleScanReply=true;const renewals=state.renewals;
  await page.goto(results);await page.getByRole('heading',{name:/synthetic@example.test/}).waitFor();
- assert.equal(state.scanPolls,2);assert.equal(state.renewals,renewals);assert.equal(state.writes.length,1);
+ assert.ok(state.scanPolls>=2);assert.equal(state.renewals,renewals);assert.equal(state.writes.length,1);
  assert.equal(await page.getByRole('button',{name:'Renew session',exact:true}).count(),0);
  console.log('A stale scan response uses the still-valid session and displays the report without a login round-trip or a second scan.');
+ state.scanPending=true;await page.reload();
+ await page.getByRole('heading',{name:/synthetic@example.test/}).waitFor();
+ const duringScan=state.renewals;await page.clock.fastForward(61_000);
+ state.scanPending=false;await page.clock.fastForward(3000);
+ await page.getByText('Completed',{exact:true}).waitFor();
+ assert.equal(state.renewals,duringScan);assert.equal(state.writes.length,1);
+ assert.equal(await page.getByRole('button',{name:'Renew session',exact:true}).count(),0);
+ console.log('A scan stays running past a minute and completes without any SSO renewal or duplicate submission.');
  state.expired=true;state.omitSignal=true;
  const notificationLost=page.evaluate(async()=> (await window.fixtureFetch('/api/auth/me')).status);
  void notificationLost.catch(()=>{});
  await page.frameLocator('iframe').getByText('Renewed without a browser notification').waitFor({state:'attached'});
- await page.clock.fastForward(12_100);
+ await page.clock.fastForward(40_100);
  assert.equal(await notificationLost,200);
  assert.equal(await page.getByRole('button',{name:'Renew session',exact:true}).count(),0);
  state.omitSignal=false;

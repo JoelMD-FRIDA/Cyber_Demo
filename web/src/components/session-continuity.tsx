@@ -21,7 +21,7 @@ export function SessionContinuity() {
     // Recover an expired page after a reload without unmounting forms or selections.
     void fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'})
       .then(response=>{if(response.status===401)renew();}).catch(()=>{});
-    const timer=setInterval(renew,40_000);
+    const timer=setInterval(renew,5*60_000);
     return ()=>{clearInterval(timer);window.removeEventListener(SESSION_EVENT,status);
       window.removeEventListener('pointerdown',activity);window.removeEventListener('keydown',activity);
       window.removeEventListener('focus',renew);};

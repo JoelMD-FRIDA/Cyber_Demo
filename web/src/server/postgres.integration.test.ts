@@ -5,11 +5,11 @@ import { readFile,mkdtemp,rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { Client } from 'pg';
-import { NextRequest } from 'next/server';
-const requestState=vi.hoisted(()=>({cookie:'',authorization:'',renewal:''}));
-vi.mock('next/headers',()=>({cookies:async()=>({get:(name:string)=>name==='__Host-frida-domain-check'?{value:requestState.cookie}:name==='__Host-frida-domain-check-renew'&&requestState.renewal?{value:requestState.renewal}:undefined}),headers:async()=>new Headers(requestState.authorization?{authorization:requestState.authorization}:{})}));
+import { NextRequest,NextResponse } from 'next/server';
+const requestState=vi.hoisted(()=>({cookie:'',authorization:'',renewal:'',csrf:''}));
+vi.mock('next/headers',()=>({cookies:async()=>({get:(name:string)=>name==='__Host-frida-domain-check'?{value:requestState.cookie}:name==='__Host-frida-domain-check-csrf'&&requestState.csrf?{value:requestState.csrf}:name==='__Host-frida-domain-check-renew'&&requestState.renewal?{value:requestState.renewal}:undefined}),headers:async()=>new Headers(requestState.authorization?{authorization:requestState.authorization}:{})}));
 import { startLogin,finishLogin } from '@/lib/auth/oidc';
-import { SESSION_COOKIE,CSRF_COOKIE,RENEWAL_COOKIE,sessionForCookie,encrypt,decrypt } from '@/lib/auth/session';
+import { SESSION_COOKIE,CSRF_COOKIE,RENEWAL_COOKIE,SESSION_SECONDS,sessionForCookie,extendActiveSession,encrypt,decrypt } from '@/lib/auth/session';
 import { createDatabaseClient } from '@/lib/db/client';
 import { database } from '@/lib/db/postgres';
 import { requireAdmin } from '@/lib/auth/guards';
@@ -26,6 +26,7 @@ import { POST as advanceScan } from '@/app/api/domain-check/[id]/route';
 import { GET as currentSession } from '@/app/api/auth/me/route';
 
 const grants=new Map<string,Record<string,unknown>>();
+const tokenAttempts=new Map<string,number>();
 let server:Server,issuer:string,owner:Client,sessionA:{session:string;csrf:string;returnPath:string;renewalCookie?:string},sessionB:typeof sessionA;
 let profileA:string,profileB:string,assetPath:string,bundle:Buffer;
 let workspace:string;
@@ -54,9 +55,11 @@ beforeAll(async()=>{
   if(req.url==='/token'){
    let body='';for await(const chunk of req)body+=chunk;
    const input=new URLSearchParams(body),entry=grants.get(input.get('code')??'');
+   tokenAttempts.set(input.get('code')??'',(tokenAttempts.get(input.get('code')??'')??0)+1);
    const basic=Buffer.from(req.headers.authorization?.split(' ')[1]??'','base64').toString().split(':').map(value=>decodeURIComponent(value)).join(':');
    if(!entry||basic!=='domain-client:fixture-client-secret'||createHash('sha256').update(input.get('code_verifier')??'').digest('base64url')!==entry.challenge){res.statusCode=400;return res.end('{}');}
    grants.delete(input.get('code')!);
+   if(entry.delayMs)await new Promise(resolve=>setTimeout(resolve,Number(entry.delayMs)));
    const now=Math.floor(Date.now()/1000);
    const claims={iss:issuer,aud:'domain-client',sub:entry.subject,email:entry.email,email_verified:true,groups:['domain-sandbox'],nonce:entry.nonce,iat:now,exp:now+300,...(entry.claims as object??{})};
    const header=Buffer.from(JSON.stringify({alg:'RS256',kid:'fixture'})).toString('base64url');const payload=Buffer.from(JSON.stringify(claims)).toString('base64url');const signed=sign('RSA-SHA256',Buffer.from(header+'.'+payload),pair.privateKey);if(entry.badSignature)signed[0]^=1;const signature=signed.toString('base64url');
@@ -79,6 +82,33 @@ describe('fresh local PostgreSQL application',()=>{
   expect((await owner.query("SELECT to_regclass('auth.users') AS auth")).rows[0].auth).toBe(null);
   const rows=(await owner.query('SELECT expires_at-now() AS remaining FROM app_sessions')).rows;
   expect(rows).toHaveLength(2);
+  const lifetimes=(await owner.query('SELECT extract(epoch from (expires_at-now())) AS seconds FROM app_sessions')).rows;
+  for(const row of lifetimes)expect(Number(row.seconds)).toBeGreaterThan(SESSION_SECONDS-60);
+ });
+ it('accepts concurrent sign-ins when the CPU-limited identity exchange takes more than four seconds',async()=>{
+  const flows=await Promise.all([login('person-a','a@example.test',{delayMs:4500}),login('person-b','b@example.test',{delayMs:4500})]);
+  const sessions=await Promise.all(flows.map(flow=>flow.result));
+  expect((await sessionForCookie(sessions[0].session))?.user.id).toBe(profileA);
+  expect((await sessionForCookie(sessions[1].session))?.user.id).toBe(profileB);
+  for(const flow of flows)expect(tokenAttempts.get(flow.callback.searchParams.get('code')!)).toBe(1);
+ },15000);
+ it('extends an active legacy session without SSO or changing session/CSRF identifiers, but never revives an expired session',async()=>{
+  const digest=createHash('sha256').update(sessionA.session).digest('hex');
+  await owner.query("UPDATE app_sessions SET expires_at=now()+interval '45 seconds' WHERE id_hash=$1",[digest]);
+  requestState.cookie=sessionA.session;requestState.csrf=sessionA.csrf;
+  const response=await currentSession();expect(response.status).toBe(200);
+  expect(Number(response.headers.get('X-Frida-Session-TTL'))).toBeGreaterThan((SESSION_SECONDS-60)*1000);
+  expect((response as NextResponse).cookies.get(SESSION_COOKIE)).toMatchObject({value:sessionA.session,httpOnly:true,secure:true});
+  expect((response as NextResponse).cookies.get(CSRF_COOKIE)).toMatchObject({value:sessionA.csrf,secure:true,sameSite:'strict'});
+  expect((await sessionForCookie(sessionA.session))?.expiresAt).toBeGreaterThan(Date.now()+6*86400000);
+  await owner.query('UPDATE profiles SET enabled=false WHERE id=$1',[profileA]);
+  expect(await sessionForCookie(sessionA.session)).toBeNull();
+  expect(await extendActiveSession(sessionA.session,Date.now()+45000)).toBeUndefined();
+  await owner.query('UPDATE profiles SET enabled=true WHERE id=$1',[profileA]);
+  await owner.query("UPDATE app_sessions SET expires_at=now()-interval '1 second' WHERE id_hash=$1",[digest]);
+  expect(await extendActiveSession(sessionA.session,Date.now()-1000)).toBeUndefined();
+  expect((await currentSession()).status).toBe(401);
+  sessionA=await(await login('person-a','a@example.test')).result;requestState.cookie='';requestState.csrf='';
  });
  it('upgrades an active session with a correctly bound renewal cookie without asking for another login',async()=>{
   requestState.cookie=sessionA.session;requestState.renewal=sessionB.renewalCookie!;
@@ -144,6 +174,13 @@ describe('fresh local PostgreSQL application',()=>{
   const flow=await login('collision','a@example.test');await expect(flow.result).rejects.toThrow();
   await expect(finishLogin(flow.callback,flow.transaction)).rejects.toThrow();
   expect((await owner.query('SELECT count(*)::int AS n FROM profiles')).rows[0].n).toBe(2);
+ });
+ it('keeps an already completed login when the browser reloads its consumed callback',async()=>{
+  const flow=await login('person-a','a@example.test');const signedIn=await flow.result;
+  const cookie=SESSION_COOKIE+'='+signedIn.session;
+  const response=await loginCallback(new NextRequest(flow.callback,{headers:{host:'domain.frida.test',cookie}}));
+  expect(response.headers.get('location')).toBe('https://domain.frida.test/dashboard/domain-check');
+  expect((await sessionForCookie(signedIn.session))?.user.id).toBe(profileA);
  });
  it('completes simultaneous original browser sign-ins with independent callback cookies',async()=>{
   const flows=await Promise.all([beginLogin(new NextRequest('https://domain.frida.test/api/auth/login?redirect=/profile',
